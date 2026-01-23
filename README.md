@@ -142,11 +142,3 @@ cargo run -- --provider openai --api-key sk-...
 ```bash
 cargo test
 ```
-
-## License
-
-MIT
-
-## Contributing
-
-Contributions welcome! Please open an issue or PR.
