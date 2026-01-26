@@ -62,14 +62,16 @@ pub struct AnthropicProvider {
     client: Client,
     api_key: String,
     model: String,
+    base_url: String,
 }
 
 impl AnthropicProvider {
-    pub fn new(api_key: String, model: Option<String>) -> Self {
+    pub fn new(api_key: String, model: Option<String>, base_url: Option<String>) -> Self {
         Self {
             client: Client::new(),
             api_key,
-            model: model.unwrap_or_else(|| "claude-sonnet-4-20250514".to_string()),
+            model: model.unwrap_or_else(|| "claude-sonnet-4-5-20250929".to_string()),
+            base_url: base_url.unwrap_or_else(|| "https://api.anthropic.com".to_string()),
         }
     }
 
@@ -128,7 +130,7 @@ impl LLMProvider for AnthropicProvider {
 
         let response = self
             .client
-            .post("https://api.anthropic.com/v1/messages")
+            .post(format!("{}/v1/messages", self.base_url))
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json")
@@ -183,7 +185,7 @@ impl LLMProvider for AnthropicProvider {
 
         let response = self
             .client
-            .post("https://api.anthropic.com/v1/messages")
+            .post(format!("{}/v1/messages", self.base_url))
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json")

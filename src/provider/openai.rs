@@ -17,8 +17,13 @@ pub struct OpenAIProvider {
 }
 
 impl OpenAIProvider {
-    pub fn new(api_key: String, model: Option<String>) -> Self {
-        let config = async_openai::config::OpenAIConfig::new().with_api_key(api_key);
+    pub fn new(api_key: String, model: Option<String>, base_url: Option<String>) -> Self {
+        let mut config = async_openai::config::OpenAIConfig::new().with_api_key(api_key);
+        
+        if let Some(url) = base_url {
+            config = config.with_api_base(url);
+        }
+        
         let client = Client::with_config(config);
         
         Self {

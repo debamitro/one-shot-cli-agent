@@ -30,6 +30,12 @@ struct Args {
 
     #[arg(short = 's', long, help = "Session ID to resume")]
     session: Option<String>,
+
+    #[arg(long, help = "OpenAI base URL (optional, overrides default)")]
+    openai_base_url: Option<String>,
+
+    #[arg(long, help = "Anthropic base URL (optional, overrides default)")]
+    anthropic_base_url: Option<String>,
 }
 
 #[tokio::main]
@@ -47,8 +53,8 @@ async fn main() -> Result<()> {
 
     // Create provider
     let provider: Box<dyn LLMProvider> = match args.provider.as_str() {
-        "openai" => Box::new(provider::openai::OpenAIProvider::new(api_key, args.model)),
-        "anthropic" => Box::new(provider::anthropic::AnthropicProvider::new(api_key, args.model)),
+        "openai" => Box::new(provider::openai::OpenAIProvider::new(api_key, args.model, args.openai_base_url)),
+        "anthropic" => Box::new(provider::anthropic::AnthropicProvider::new(api_key, args.model, args.anthropic_base_url)),
         _ => return Err(anyhow::anyhow!("Unknown provider: {}. Use 'openai' or 'anthropic'", args.provider)),
     };
 
