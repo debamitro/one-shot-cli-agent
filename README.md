@@ -34,9 +34,9 @@ A command-line interactive coding agent built in Rust with support for OpenAI an
 
 This is the easiest method.
 
-- [Windows](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.1/codeagent_0.1_win.zip)
-- [MacOS (Apple Silicon)](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.1/codeagent_0.1_aarch64-apple-darwin.zip)
-- [MacOS (Intel)](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.1/codeagent_0.1_x86_64-apple-darwin.zip)
+- [Windows](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.2/codeagent_0.2_win.zip)
+- [MacOS (Apple Silicon)](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.2/codeagent_0.2_aarch64-apple-darwin.zip)
+- [MacOS (Intel)](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.2/codeagent_0.2_x86_64-apple-darwin.zip)
 
 ### Build from Source
 
