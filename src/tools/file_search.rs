@@ -11,7 +11,7 @@ impl Tool for FileSearchTool {
     }
 
     fn description(&self) -> &str {
-        "Search for files using glob patterns or grep for content in files using ripgrep"
+        "Search for files using glob patterns or grep for content in files using ripgrep. REQUIRED: Set 'operation' to 'glob' for filename pattern matching (e.g., '**/*.rs'), or 'grep' for content search using regex patterns."
     }
 
     fn input_schema(&self) -> serde_json::Value {

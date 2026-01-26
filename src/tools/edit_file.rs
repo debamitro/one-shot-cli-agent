@@ -13,7 +13,7 @@ impl Tool for EditFileTool {
     }
 
     fn description(&self) -> &str {
-        "Create new files or edit existing files with various operations"
+        "Create new files or edit existing files with various operations. REQUIRED: Set 'operation' to one of: 'create_file' (new file), 'replace_by_string' (find/replace unique text), 'replace_by_lines' (replace line range), or 'read_file' (view contents)."
     }
 
     fn input_schema(&self) -> serde_json::Value {

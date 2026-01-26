@@ -55,6 +55,7 @@ struct Delta {
     #[serde(rename = "type")]
     delta_type: String,
     text: Option<String>,
+    partial_json: Option<String>,
 }
 
 pub struct AnthropicProvider {
@@ -196,6 +197,9 @@ impl LLMProvider for AnthropicProvider {
         tokio::spawn(async move {
             let mut stream = response.bytes_stream();
             use futures::StreamExt;
+            
+            // State for accumulating tool call parameters
+            let mut current_tool_call: Option<(String, String, String)> = None; // (id, name, accumulated_json)
 
             while let Some(chunk_result) = stream.next().await {
                 if let Ok(chunk) = chunk_result {
@@ -217,18 +221,40 @@ impl LLMProvider for AnthropicProvider {
                                                     return;
                                                 }
                                             }
+                                            
+                                            // Accumulate tool input JSON deltas
+                                            if delta.delta_type == "input_json_delta" {
+                                                if let Some(partial_json) = delta.partial_json {
+                                                    if let Some((_, _, ref mut json)) = current_tool_call {
+                                                        json.push_str(&partial_json);
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                     "content_block_start" => {
-                                        if let Some(ContentBlock::ToolUse { id, name, input }) =
+                                        if let Some(ContentBlock::ToolUse { id, name, input: _ }) =
                                             event.content_block
                                         {
+                                            // Start accumulating - initial input is always empty {}
+                                            current_tool_call = Some((id, name, String::new()));
+                                        }
+                                    }
+                                    "content_block_stop" => {
+                                        // Finalize accumulated tool call
+                                        if let Some((id, name, json_str)) = current_tool_call.take() {
+                                            let arguments = if json_str.is_empty() {
+                                                serde_json::json!({})
+                                            } else {
+                                                serde_json::from_str(&json_str).unwrap_or_else(|_| serde_json::json!({}))
+                                            };
+                                            
                                             let chunk = StreamChunk {
                                                 content: None,
                                                 tool_calls: vec![ToolCall {
                                                     id,
                                                     name,
-                                                    arguments: input,
+                                                    arguments,
                                                 }],
                                                 finished: false,
                                             };

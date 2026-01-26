@@ -11,7 +11,7 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &str {
-        "Execute shell commands in the system"
+        "Execute shell commands in the system. Provide the full command string in the 'command' parameter. Optionally specify 'cwd' to set the working directory."
     }
 
     fn input_schema(&self) -> serde_json::Value {
