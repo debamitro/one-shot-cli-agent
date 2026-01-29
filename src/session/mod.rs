@@ -171,4 +171,102 @@ impl Session {
 
         history
     }
+
+    pub fn export_to_markdown(&self, filename: Option<String>) -> Result<String> {
+        // Generate filename if not provided
+        let filename = filename.unwrap_or_else(|| {
+            let sanitized_title = sanitize_filename(&self.info.title);
+            let id_prefix = get_id_prefix(&self.info.id);
+            format!("{}_{}.md", sanitized_title, id_prefix)
+        });
+
+        // Resolve path relative to session directory
+        let file_path = if PathBuf::from(&filename).is_absolute() {
+            PathBuf::from(&filename)
+        } else {
+            PathBuf::from(&self.info.directory).join(&filename)
+        };
+
+        // Build markdown content
+        let mut markdown = String::new();
+        
+        // Header with session metadata
+        markdown.push_str(&format!("# {}\n\n", self.info.title));
+        markdown.push_str(&format!("**Session ID**: {}\n", self.info.id));
+        markdown.push_str(&format!("**Directory**: {}\n", self.info.directory));
+        markdown.push_str(&format!("**Created**: {}\n", self.info.created_at.format("%Y-%m-%d %H:%M:%S UTC")));
+        markdown.push_str(&format!("**Updated**: {}\n", self.info.updated_at.format("%Y-%m-%d %H:%M:%S UTC")));
+        markdown.push_str(&format!("**Messages**: {}\n\n", self.info.message_count));
+        markdown.push_str("---\n\n");
+
+        // Check if there are any messages
+        if self.messages.is_empty() {
+            markdown.push_str("*No messages yet*\n");
+        } else {
+            // Iterate through messages
+            for msg in &self.messages {
+                match msg.role.as_str() {
+                    "user" => {
+                        markdown.push_str("## User\n\n");
+                        if let Some(content) = &msg.content {
+                            markdown.push_str(content);
+                            markdown.push_str("\n\n");
+                        }
+                        markdown.push_str("---\n\n");
+                    }
+                    "assistant" => {
+                        markdown.push_str("## Assistant\n\n");
+                        if let Some(content) = &msg.content {
+                            markdown.push_str(content);
+                            markdown.push_str("\n\n");
+                        }
+
+                        // Add tool calls if present
+                        if !msg.tool_calls.is_empty() {
+                            markdown.push_str("### Tool Calls\n\n");
+                            for tool_call in &msg.tool_calls {
+                                markdown.push_str(&format!("- **{}** (`{}`)\n", tool_call.name, tool_call.id));
+                                
+                                // Format arguments as JSON
+                                if let Ok(formatted_args) = serde_json::to_string_pretty(&tool_call.arguments) {
+                                    markdown.push_str("  - Arguments:\n");
+                                    markdown.push_str("    ```json\n");
+                                    markdown.push_str(&format!("    {}\n", formatted_args.replace("\n", "\n    ")));
+                                    markdown.push_str("    ```\n");
+                                }
+
+                                // Find corresponding result
+                                if let Some(result) = msg.tool_results.iter().find(|r| r.tool_call_id == tool_call.id) {
+                                    markdown.push_str(&format!("  - Result: {}\n", result.observation));
+                                    markdown.push_str(&format!("  - Status: {}\n", result.status));
+                                } else {
+                                    markdown.push_str("  - Result: *No result recorded*\n");
+                                }
+                                markdown.push_str("\n");
+                            }
+                        }
+                        markdown.push_str("---\n\n");
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Write to file
+        std::fs::write(&file_path, markdown)?;
+
+        // Return the actual filename used
+        Ok(file_path.to_string_lossy().to_string())
+    }
+}
+
+// Helper functions
+fn sanitize_filename(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect()
+}
+
+fn get_id_prefix(id: &str) -> String {
+    id.chars().take(8).collect()
 }

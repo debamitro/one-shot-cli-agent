@@ -116,6 +116,32 @@ impl FileSearchTool {
         case_sensitive: bool,
         max_results: Option<usize>,
     ) -> Result<ToolOutput> {
+        // Try grep tools in order of preference: ripgrep > grep > findstr
+        if let Ok(output) = self.try_ripgrep(pattern, path, file_type, case_sensitive, max_results) {
+            return Ok(output);
+        }
+        
+        if let Ok(output) = self.try_grep(pattern, path, case_sensitive, max_results) {
+            return Ok(output);
+        }
+        
+        if let Ok(output) = self.try_findstr(pattern, path, case_sensitive, max_results) {
+            return Ok(output);
+        }
+        
+        Err(anyhow::anyhow!(
+            "No grep tool available. Please install ripgrep (recommended), or ensure grep (Unix) or findstr (Windows) is available."
+        ))
+    }
+
+    fn try_ripgrep(
+        &self,
+        pattern: &str,
+        path: &str,
+        file_type: Option<&str>,
+        case_sensitive: bool,
+        max_results: Option<usize>,
+    ) -> Result<ToolOutput> {
         let mut cmd = Command::new("rg");
         cmd.arg("--json").arg("--no-heading").arg(pattern).arg(path);
 
@@ -135,11 +161,11 @@ impl FileSearchTool {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
-            .context("Failed to execute ripgrep")?;
+            .context("ripgrep not available")?;
 
         if !output.status.success() && output.stdout.is_empty() {
             return Ok(ToolOutput {
-                output: json!({ "matches": [] }),
+                output: json!({ "matches": [], "tool": "ripgrep" }),
                 observation: "No matches found".to_string(),
                 display: None,
                 status: "success".to_string(),
@@ -169,7 +195,7 @@ impl FileSearchTool {
         }
 
         let observation = format!(
-            "Found {} match(es) in {} file(s)",
+            "Found {} match(es) in {} file(s) (using ripgrep)",
             matches.len(),
             files.len()
         );
@@ -189,7 +215,140 @@ impl FileSearchTool {
             .join("\n");
 
         Ok(ToolOutput {
-            output: json!({ "matches": matches }),
+            output: json!({ "matches": matches, "tool": "ripgrep" }),
+            observation,
+            display: Some(display),
+            status: "success".to_string(),
+        })
+    }
+
+    fn try_grep(
+        &self,
+        pattern: &str,
+        path: &str,
+        case_sensitive: bool,
+        max_results: Option<usize>,
+    ) -> Result<ToolOutput> {
+        let mut cmd = Command::new("grep");
+        cmd.arg("-n") // line numbers
+            .arg("-r") // recursive
+            .arg("-E") // extended regex
+            .arg(pattern)
+            .arg(path);
+
+        if !case_sensitive {
+            cmd.arg("-i");
+        }
+
+        let output = cmd
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .context("grep not available")?;
+
+        self.parse_grep_output(&output, max_results, "grep")
+    }
+
+    fn try_findstr(
+        &self,
+        pattern: &str,
+        path: &str,
+        case_sensitive: bool,
+        max_results: Option<usize>,
+    ) -> Result<ToolOutput> {
+        // findstr uses simple wildcards, not regex - escape special chars
+        let escaped_pattern = pattern.replace('*', ".*");
+        
+        let mut cmd = Command::new("findstr");
+        cmd.arg("/N") // line numbers
+            .arg("/S"); // subdirectories
+
+        if !case_sensitive {
+            cmd.arg("/I");
+        }
+
+        cmd.arg(&escaped_pattern).arg(format!("{}\\*", path));
+
+        let output = cmd
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .context("findstr not available")?;
+
+        self.parse_grep_output(&output, max_results, "findstr")
+    }
+
+    fn parse_grep_output(
+        &self,
+        output: &std::process::Output,
+        max_results: Option<usize>,
+        tool_name: &str,
+    ) -> Result<ToolOutput> {
+        if !output.status.success() && output.stdout.is_empty() {
+            return Ok(ToolOutput {
+                output: json!({ "matches": [], "tool": tool_name }),
+                observation: "No matches found".to_string(),
+                display: None,
+                status: "success".to_string(),
+            });
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut matches = Vec::new();
+        let mut files = std::collections::HashSet::new();
+
+        // Parse grep/findstr output: "file:line:text" or "file:line text"
+        for line in stdout.lines() {
+            if let Some(first_colon) = line.find(':') {
+                let file_and_rest = line.split_at(first_colon);
+                let file = file_and_rest.0;
+                let rest = &file_and_rest.1[1..]; // skip the colon
+
+                if let Some(second_colon) = rest.find(':') {
+                    let line_and_text = rest.split_at(second_colon);
+                    if let Ok(line_num) = line_and_text.0.parse::<u64>() {
+                        let text = &line_and_text.1[1..]; // skip the colon
+
+                        files.insert(file.to_string());
+                        matches.push(json!({
+                            "file": file,
+                            "line": line_num,
+                            "text": text.trim()
+                        }));
+
+                        if let Some(max) = max_results {
+                            if matches.len() >= max {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let observation = format!(
+            "Found {} match(es) in {} file(s) (using {})",
+            matches.len(),
+            files.len(),
+            tool_name
+        );
+
+        let display = matches
+            .iter()
+            .take(20)
+            .map(|m| {
+                format!(
+                    "{}:{}: {}",
+                    m["file"].as_str().unwrap_or(""),
+                    m["line"],
+                    m["text"].as_str().unwrap_or("")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Ok(ToolOutput {
+            output: json!({ "matches": matches, "tool": tool_name }),
             observation,
             display: Some(display),
             status: "success".to_string(),

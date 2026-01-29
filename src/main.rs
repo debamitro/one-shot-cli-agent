@@ -125,7 +125,7 @@ async fn main() -> Result<()> {
     );
     println!(
         "{}",
-        "Type 'exit' to quit, 'save' to save session\n".dimmed()
+        "Type 'exit' to quit, 'save' to save session, 'export [file]' to export as markdown\n".dimmed()
     );
 
     // Main REPL loop
@@ -143,6 +143,24 @@ async fn main() -> Result<()> {
             "save" => {
                 session.save()?;
                 println!("{}", "Session saved.".green());
+                continue;
+            }
+            input if input.starts_with("export") => {
+                // Parse optional filename argument
+                let filename = input
+                    .strip_prefix("export")
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+
+                match session.export_to_markdown(filename) {
+                    Ok(path) => {
+                        println!("{}", format!("Exported to: {}", path).green());
+                    }
+                    Err(e) => {
+                        println!("{}", format!("Export failed: {}", e).red());
+                    }
+                }
                 continue;
             }
             "" => continue,

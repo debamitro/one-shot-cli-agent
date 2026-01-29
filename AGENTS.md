@@ -50,9 +50,14 @@ codeagent --provider openai --session <session-id>
 
 ### Critical Dependencies
 
-- **ripgrep**: MUST be installed and in PATH for `FileSearchTool` grep functionality
-  - Install: `cargo install ripgrep` or via package manager
-  - Used by: `src/tools/file_search.rs` for code search
+- **Grep tools** (for `FileSearchTool` code search):
+  - **ripgrep** (recommended): Fastest, supports file type filters, installed via `cargo install ripgrep`
+  - **grep** (Unix fallback): Available on most Unix systems by default
+  - **findstr** (Windows fallback): Available on Windows by default
+  - Tool selection: Automatically tries ripgrep → grep → findstr (first available wins)
+- **Web search**: Optional, supports two providers:
+  - Serper API: Set `SERPER_API_KEY` env var for `WebSearchTool` (premium, requires API key from serper.dev)
+  - DuckDuckGo: `WebSearchDDGTool` works out of the box (free, no API key needed)
 
 ## Architecture
 
@@ -87,7 +92,9 @@ User Input (REPL)
 **Registry pattern** for tool management:
 1. Each tool implements `Tool` trait: `name()`, `description()`, `input_schema()`, `execute()`
 2. `ToolRegistry` maintains `HashMap<String, Box<dyn Tool>>`
-3. Tools registered at startup in `main.rs`
+3. Tools registered in `src/tools/mod.rs`:
+   - `ToolRegistry::new()`: Registers basic tools only (FileSearch, EditFile, Bash)
+   - `ToolRegistry::new_with_api_keys()`: Adds web search tools (conditionally based on API keys)
 4. LLM receives tool definitions as JSON schemas
 5. Tool calls executed synchronously, results added to conversation
 
@@ -95,6 +102,9 @@ User Input (REPL)
 - `FileSearchTool`: glob (find files) + grep (search content via ripgrep)
 - `EditFileTool`: create_file, replace_by_string, replace_by_lines, read_file
 - `BashTool`: Execute shell commands in working directory
+- `WebSearchTool`: Web search via Serper API (requires SERPER_API_KEY)
+- `WebSearchDDGTool`: Web search via DuckDuckGo (free, no API key required)
+- `URLFetchTool`: Fetch and extract content from URLs (HTML to text/markdown)
 
 **Tool output format:**
 ```rust
@@ -216,7 +226,10 @@ src/
     ├── mod.rs           # Tool trait + registry
     ├── file_search.rs   # Glob + grep tools
     ├── edit_file.rs     # File editing tools
-    └── bash.rs          # Command execution
+    ├── bash.rs          # Command execution
+    ├── web_search.rs    # Serper API web search
+    ├── web_search_ddg.rs # DuckDuckGo web search (free)
+    └── url_fetch.rs     # URL content fetching
 ```
 
 ## Development Workflow
