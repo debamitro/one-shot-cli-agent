@@ -10,9 +10,10 @@ A command-line interactive coding agent built in Rust with support for OpenAI an
 ## Features
 
 - **Multi-Provider Support**: Works with both OpenAI (GPT-4o) and Anthropic (Claude) APIs
+- **Custom LLM URL Support**: Can handle any LLM URL as long as it is compatible with the OpenAI or Anthropic API 
 - **Interactive REPL**: Command-line interface for natural conversation with the AI
-- **Tool System**: Built-in tools for file operations, code search, and command execution
-- **Session Management**: Persistent conversation history with save/resume capability
+- **Tool System**: Built-in tools for file operations, code search, web search and command execution
+- **Session Management**: Persistent conversation history with save/resume/export capability
 - **Streaming Responses**: Real-time display of AI responses as they're generated
 
 ## Tools
@@ -30,15 +31,17 @@ A command-line interactive coding agent built in Rust with support for OpenAI an
 ### Bash Tool
 - Execute shell commands in the working directory
 
+### Web Search Tool
+- Uses DuckDuckGo by default, can use Serper API if the SERPER_API_KEY is set
 ## Installation
 
 ### Download pre-built releases
 
-This is the easiest method.
+This is the easiest method. Just unzip and run from the command-line.
 
-- [Windows](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.2/codeagent_0.2_win.zip)
-- [MacOS (Apple Silicon)](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.2/codeagent_0.2_aarch64-apple-darwin.zip)
-- [MacOS (Intel)](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.2/codeagent_0.2_x86_64-apple-darwin.zip)
+- [Windows](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.3/codeagent_0.3_win.zip)
+- [MacOS (Apple Silicon)](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.3/codeagent_0.3_aarch64-apple-darwin.zip)
+- [MacOS (Intel)](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.3/codeagent_0.3_x86_64-apple-darwin.zip)
 
 ### Build from Source
 
