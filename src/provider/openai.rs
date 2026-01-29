@@ -19,13 +19,13 @@ pub struct OpenAIProvider {
 impl OpenAIProvider {
     pub fn new(api_key: String, model: Option<String>, base_url: Option<String>) -> Self {
         let mut config = async_openai::config::OpenAIConfig::new().with_api_key(api_key);
-        
+
         if let Some(url) = base_url {
             config = config.with_api_base(url);
         }
-        
+
         let client = Client::with_config(config);
-        
+
         Self {
             client,
             model: model.unwrap_or_else(|| "gpt-4o".to_string()),
@@ -88,7 +88,7 @@ impl LLMProvider for OpenAIProvider {
         tools: Option<Vec<serde_json::Value>>,
     ) -> Result<StreamChunk> {
         let converted_messages = self.convert_messages(messages);
-        
+
         let mut request = CreateChatCompletionRequestArgs::default()
             .model(&self.model)
             .messages(converted_messages)
@@ -110,10 +110,7 @@ impl LLMProvider for OpenAIProvider {
             .await
             .context("Failed to get OpenAI completion")?;
 
-        let choice = response
-            .choices
-            .first()
-            .context("No choices in response")?;
+        let choice = response.choices.first().context("No choices in response")?;
 
         let content = choice.message.content.clone();
         let tool_calls = choice
@@ -146,7 +143,7 @@ impl LLMProvider for OpenAIProvider {
         tools: Option<Vec<serde_json::Value>>,
     ) -> Result<tokio::sync::mpsc::Receiver<StreamChunk>> {
         let converted_messages = self.convert_messages(messages);
-        
+
         let mut request = CreateChatCompletionRequestArgs::default()
             .model(&self.model)
             .messages(converted_messages)
@@ -208,7 +205,7 @@ impl LLMProvider for OpenAIProvider {
                             if tx.send(chunk).await.is_err() {
                                 break;
                             }
-                            
+
                             if finished {
                                 break;
                             }
@@ -217,13 +214,15 @@ impl LLMProvider for OpenAIProvider {
                     Err(_) => break,
                 }
             }
-            
+
             // Send final finished chunk if stream ended without finish_reason
-            let _ = tx.send(StreamChunk {
-                content: None,
-                tool_calls: Vec::new(),
-                finished: true,
-            }).await;
+            let _ = tx
+                .send(StreamChunk {
+                    content: None,
+                    tool_calls: Vec::new(),
+                    finished: true,
+                })
+                .await;
         });
 
         Ok(rx)

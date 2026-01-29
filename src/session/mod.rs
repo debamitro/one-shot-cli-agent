@@ -44,7 +44,7 @@ impl Session {
     pub fn new(title: String, directory: String, storage_path: PathBuf) -> Self {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
-        
+
         Self {
             info: SessionInfo {
                 id,
@@ -63,7 +63,7 @@ impl Session {
         let session_file = storage_path.join(format!("{}.json", session_id));
         let data = std::fs::read_to_string(session_file)?;
         let (info, messages) = serde_json::from_str::<(SessionInfo, Vec<MessagePart>)>(&data)?;
-        
+
         Ok(Self {
             info,
             messages,
@@ -81,7 +81,7 @@ impl Session {
 
     pub fn add_user_message(&mut self, content: String) -> String {
         let message_id = Uuid::new_v4().to_string();
-        
+
         self.messages.push(MessagePart {
             id: message_id.clone(),
             role: "user".to_string(),
@@ -90,16 +90,20 @@ impl Session {
             tool_results: Vec::new(),
             timestamp: Utc::now(),
         });
-        
+
         self.info.message_count += 1;
         self.info.updated_at = Utc::now();
-        
+
         message_id
     }
 
-    pub fn add_assistant_message(&mut self, content: Option<String>, tool_calls: Vec<ToolCall>) -> String {
+    pub fn add_assistant_message(
+        &mut self,
+        content: Option<String>,
+        tool_calls: Vec<ToolCall>,
+    ) -> String {
         let message_id = Uuid::new_v4().to_string();
-        
+
         self.messages.push(MessagePart {
             id: message_id.clone(),
             role: "assistant".to_string(),
@@ -108,14 +112,20 @@ impl Session {
             tool_results: Vec::new(),
             timestamp: Utc::now(),
         });
-        
+
         self.info.message_count += 1;
         self.info.updated_at = Utc::now();
-        
+
         message_id
     }
 
-    pub fn add_tool_result(&mut self, tool_call_id: String, output: serde_json::Value, observation: String, status: String) {
+    pub fn add_tool_result(
+        &mut self,
+        tool_call_id: String,
+        output: serde_json::Value,
+        observation: String,
+        status: String,
+    ) {
         if let Some(last_message) = self.messages.last_mut() {
             last_message.tool_results.push(ToolResult {
                 tool_call_id,
@@ -129,7 +139,7 @@ impl Session {
 
     pub fn get_conversation_history(&self) -> Vec<Message> {
         let mut history = Vec::new();
-        
+
         for msg in &self.messages {
             match msg.role.as_str() {
                 "user" => {
@@ -147,7 +157,7 @@ impl Session {
                             content: content.clone(),
                         });
                     }
-                    
+
                     for result in &msg.tool_results {
                         history.push(Message {
                             role: "user".to_string(),
@@ -158,7 +168,7 @@ impl Session {
                 _ => {}
             }
         }
-        
+
         history
     }
 }

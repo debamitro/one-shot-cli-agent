@@ -69,7 +69,10 @@ impl Tool for BashTool {
                 format!("Command executed successfully")
             }
         } else {
-            format!("Command failed with exit code: {}", output.status.code().unwrap_or(-1))
+            format!(
+                "Command failed with exit code: {}",
+                output.status.code().unwrap_or(-1)
+            )
         };
 
         let display = if !stdout.is_empty() {

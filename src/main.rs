@@ -7,7 +7,6 @@ use clap::Parser;
 use colored::Colorize;
 use dialoguer::{theme::ColorfulTheme, Input};
 
-
 use provider::{LLMProvider, Message};
 use session::Session;
 use tools::ToolRegistry;
@@ -19,7 +18,11 @@ struct Args {
     #[arg(short, long, help = "Provider to use: openai or anthropic")]
     provider: String,
 
-    #[arg(short, long, help = "API key (or set OPENAI_API_KEY/ANTHROPIC_API_KEY env var)")]
+    #[arg(
+        short,
+        long,
+        help = "API key (or set OPENAI_API_KEY/ANTHROPIC_API_KEY env var)"
+    )]
     api_key: Option<String>,
 
     #[arg(short, long, help = "Model to use (optional, uses provider default)")]
@@ -43,19 +46,35 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Get API key from args or environment
-    let api_key = args.api_key.or_else(|| {
-        match args.provider.as_str() {
+    let api_key = args
+        .api_key
+        .or_else(|| match args.provider.as_str() {
             "openai" => std::env::var("OPENAI_API_KEY").ok(),
             "anthropic" => std::env::var("ANTHROPIC_API_KEY").ok(),
             _ => None,
-        }
-    }).ok_or_else(|| anyhow::anyhow!("API key required. Set via --api-key or environment variable"))?;
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!("API key required. Set via --api-key or environment variable")
+        })?;
 
     // Create provider
     let provider: Box<dyn LLMProvider> = match args.provider.as_str() {
-        "openai" => Box::new(provider::openai::OpenAIProvider::new(api_key, args.model, args.openai_base_url)),
-        "anthropic" => Box::new(provider::anthropic::AnthropicProvider::new(api_key, args.model, args.anthropic_base_url)),
-        _ => return Err(anyhow::anyhow!("Unknown provider: {}. Use 'openai' or 'anthropic'", args.provider)),
+        "openai" => Box::new(provider::openai::OpenAIProvider::new(
+            api_key,
+            args.model,
+            args.openai_base_url,
+        )),
+        "anthropic" => Box::new(provider::anthropic::AnthropicProvider::new(
+            api_key,
+            args.model,
+            args.anthropic_base_url,
+        )),
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Unknown provider: {}. Use 'openai' or 'anthropic'",
+                args.provider
+            ))
+        }
     };
 
     // Setup storage
@@ -75,12 +94,16 @@ async fn main() -> Result<()> {
             .interact_text()?;
 
         let session = Session::new(title, args.directory, storage_path);
-        println!("{}", format!("Created session: {}", session.info.id).green());
+        println!(
+            "{}",
+            format!("Created session: {}", session.info.id).green()
+        );
         session
     };
 
     // Initialize tools
-    let tool_registry = ToolRegistry::new();
+    let web_search_api_key = std::env::var("SERPER_API_KEY").ok();
+    let tool_registry = ToolRegistry::new_with_api_keys(web_search_api_key);
     let tool_definitions: Vec<serde_json::Value> = tool_registry
         .list_definitions()
         .iter()
@@ -88,9 +111,22 @@ async fn main() -> Result<()> {
         .collect();
 
     // Print welcome message
-    println!("\n{}", "CodeAgent - Interactive Coding Assistant".bold().cyan());
-    println!("{}", format!("Provider: {} | Directory: {}", args.provider, session.info.directory).dimmed());
-    println!("{}", "Type 'exit' to quit, 'save' to save session\n".dimmed());
+    println!(
+        "\n{}",
+        "CodeAgent - Interactive Coding Assistant".bold().cyan()
+    );
+    println!(
+        "{}",
+        format!(
+            "Provider: {} | Directory: {}",
+            args.provider, session.info.directory
+        )
+        .dimmed()
+    );
+    println!(
+        "{}",
+        "Type 'exit' to quit, 'save' to save session\n".dimmed()
+    );
 
     // Main REPL loop
     loop {
@@ -128,7 +164,9 @@ async fn main() -> Result<()> {
             println!("{}", "\nAssistant: ".bold().blue());
 
             // Stream completion
-            let mut rx = provider.stream_completion(messages.clone(), Some(tool_definitions.clone())).await?;
+            let mut rx = provider
+                .stream_completion(messages.clone(), Some(tool_definitions.clone()))
+                .await?;
 
             let mut full_content = String::new();
             let mut all_tool_calls = Vec::new();
@@ -148,7 +186,11 @@ async fn main() -> Result<()> {
             println!(); // Newline after streaming
 
             // Add assistant message
-            let content = if full_content.is_empty() { None } else { Some(full_content) };
+            let content = if full_content.is_empty() {
+                None
+            } else {
+                Some(full_content)
+            };
             session.add_assistant_message(content.clone(), all_tool_calls.clone());
 
             // If no tool calls, we're done
@@ -160,7 +202,7 @@ async fn main() -> Result<()> {
             println!("\n{}", "Executing tools...".yellow());
             for tool_call in &all_tool_calls {
                 println!("  {} {}", "→".blue(), tool_call.name.bold());
-                
+
                 match tool_registry.execute(&tool_call.name, tool_call.arguments.clone()) {
                     Ok(result) => {
                         println!("    {}", result.observation.green());
@@ -169,9 +211,9 @@ async fn main() -> Result<()> {
                                 println!("\n{}\n", display.dimmed());
                             }
                         }
-                        
+
                         let observation = result.observation.clone();
-                        
+
                         session.add_tool_result(
                             tool_call.id.clone(),
                             result.output,
@@ -188,7 +230,7 @@ async fn main() -> Result<()> {
                     Err(e) => {
                         let error_msg = format!("Tool execution failed: {}", e);
                         println!("    {}", error_msg.red());
-                        
+
                         session.add_tool_result(
                             tool_call.id.clone(),
                             serde_json::json!({"error": error_msg}),

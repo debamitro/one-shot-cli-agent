@@ -57,10 +57,7 @@ impl Tool for FileSearchTool {
             .get("pattern")
             .and_then(|v| v.as_str())
             .context("Missing pattern")?;
-        let path = input
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or(".");
+        let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
 
         match operation {
             "glob" => self.glob(pattern, path),
@@ -74,7 +71,7 @@ impl Tool for FileSearchTool {
                     .get("max_results")
                     .and_then(|v| v.as_u64())
                     .map(|n| n as usize);
-                
+
                 self.grep(pattern, path, file_type, case_sensitive, max_results)
             }
             _ => Err(anyhow::anyhow!("Unknown operation: {}", operation)),
@@ -120,10 +117,7 @@ impl FileSearchTool {
         max_results: Option<usize>,
     ) -> Result<ToolOutput> {
         let mut cmd = Command::new("rg");
-        cmd.arg("--json")
-            .arg("--no-heading")
-            .arg(pattern)
-            .arg(path);
+        cmd.arg("--json").arg("--no-heading").arg(pattern).arg(path);
 
         if !case_sensitive {
             cmd.arg("-i");

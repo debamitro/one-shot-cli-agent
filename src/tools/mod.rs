@@ -1,6 +1,9 @@
-pub mod file_search;
-pub mod edit_file;
 pub mod bash;
+pub mod edit_file;
+pub mod file_search;
+pub mod url_fetch;
+pub mod web_search;
+pub mod web_search_ddg;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -37,23 +40,44 @@ impl ToolRegistry {
         let mut registry = Self {
             tools: HashMap::new(),
         };
-        
+
         // Register built-in tools
         registry.register(Box::new(file_search::FileSearchTool));
         registry.register(Box::new(edit_file::EditFileTool));
         registry.register(Box::new(bash::BashTool));
-        
+
         registry
     }
-    
+
+    pub fn new_with_api_keys(web_search_api_key: Option<String>) -> Self {
+        let mut registry = Self {
+            tools: HashMap::new(),
+        };
+
+        // Register built-in tools
+        registry.register(Box::new(file_search::FileSearchTool));
+        registry.register(Box::new(edit_file::EditFileTool));
+        registry.register(Box::new(bash::BashTool));
+
+        // Web search tools: Serper API (if key provided) or DuckDuckGo (free fallback)
+        if web_search_api_key.is_some() {
+            registry.register(Box::new(web_search::WebSearchTool::new(web_search_api_key)));
+        }
+        registry.register(Box::new(web_search_ddg::WebSearchDDGTool));
+
+        registry.register(Box::new(url_fetch::URLFetchTool));
+
+        registry
+    }
+
     pub fn register(&mut self, tool: Box<dyn Tool>) {
         self.tools.insert(tool.name().to_string(), tool);
     }
-    
+
     pub fn get(&self, name: &str) -> Option<&dyn Tool> {
         self.tools.get(name).map(|b| b.as_ref())
     }
-    
+
     pub fn list_definitions(&self) -> Vec<ToolDefinition> {
         self.tools
             .values()
@@ -64,7 +88,7 @@ impl ToolRegistry {
             })
             .collect()
     }
-    
+
     pub fn execute(&self, name: &str, input: serde_json::Value) -> Result<ToolOutput> {
         let tool = self
             .get(name)

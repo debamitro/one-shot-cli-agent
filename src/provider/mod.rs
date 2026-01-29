@@ -1,5 +1,5 @@
-pub mod openai;
 pub mod anthropic;
+pub mod openai;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -32,7 +32,7 @@ pub trait LLMProvider: Send + Sync {
         messages: Vec<Message>,
         tools: Option<Vec<serde_json::Value>>,
     ) -> Result<StreamChunk>;
-    
+
     async fn stream_completion(
         &self,
         messages: Vec<Message>,

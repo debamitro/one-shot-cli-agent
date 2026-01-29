@@ -95,8 +95,14 @@ impl Tool for EditFileTool {
                 self.replace_by_lines(file_path, start_line, end_line, new_content)
             }
             "read_file" => {
-                let start_line = input.get("start_line").and_then(|v| v.as_u64()).map(|n| n as usize);
-                let end_line = input.get("end_line").and_then(|v| v.as_u64()).map(|n| n as usize);
+                let start_line = input
+                    .get("start_line")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize);
+                let end_line = input
+                    .get("end_line")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize);
                 self.read_file(file_path, start_line, end_line)
             }
             _ => Err(anyhow::anyhow!("Unknown operation: {}", operation)),
@@ -114,34 +120,46 @@ impl EditFileTool {
             fs::create_dir_all(parent)?;
         }
 
-        let mut file = fs::File::create(file_path)
-            .context(format!("Failed to create file: {}", file_path))?;
+        let mut file =
+            fs::File::create(file_path).context(format!("Failed to create file: {}", file_path))?;
         file.write_all(content.as_bytes())?;
 
         Ok(ToolOutput {
             output: json!({ "file_path": file_path, "lines": content.lines().count() }),
-            observation: format!("Created file {} with {} lines", file_path, content.lines().count()),
+            observation: format!(
+                "Created file {} with {} lines",
+                file_path,
+                content.lines().count()
+            ),
             display: Some(format!("✓ Created {}", file_path)),
             status: "success".to_string(),
         })
     }
 
-    fn replace_by_string(&self, file_path: &str, old_string: &str, new_string: &str) -> Result<ToolOutput> {
-        let content = fs::read_to_string(file_path)
-            .context(format!("Failed to read file: {}", file_path))?;
+    fn replace_by_string(
+        &self,
+        file_path: &str,
+        old_string: &str,
+        new_string: &str,
+    ) -> Result<ToolOutput> {
+        let content =
+            fs::read_to_string(file_path).context(format!("Failed to read file: {}", file_path))?;
 
         let occurrences = content.matches(old_string).count();
-        
+
         if occurrences == 0 {
             return Err(anyhow::anyhow!("String not found in file"));
         }
-        
+
         if occurrences > 1 {
-            return Err(anyhow::anyhow!("String appears {} times, must be unique", occurrences));
+            return Err(anyhow::anyhow!(
+                "String appears {} times, must be unique",
+                occurrences
+            ));
         }
 
         let new_content = content.replace(old_string, new_string);
-        
+
         fs::write(file_path, &new_content)
             .context(format!("Failed to write file: {}", file_path))?;
 
@@ -153,16 +171,22 @@ impl EditFileTool {
         })
     }
 
-    fn replace_by_lines(&self, file_path: &str, start_line: usize, end_line: usize, new_content: &str) -> Result<ToolOutput> {
-        let content = fs::read_to_string(file_path)
-            .context(format!("Failed to read file: {}", file_path))?;
+    fn replace_by_lines(
+        &self,
+        file_path: &str,
+        start_line: usize,
+        end_line: usize,
+        new_content: &str,
+    ) -> Result<ToolOutput> {
+        let content =
+            fs::read_to_string(file_path).context(format!("Failed to read file: {}", file_path))?;
 
         let lines: Vec<&str> = content.lines().collect();
-        
+
         if start_line < 1 || start_line > lines.len() {
             return Err(anyhow::anyhow!("Invalid start_line: {}", start_line));
         }
-        
+
         if end_line < start_line || end_line > lines.len() {
             return Err(anyhow::anyhow!("Invalid end_line: {}", end_line));
         }
@@ -173,7 +197,7 @@ impl EditFileTool {
         new_lines.extend_from_slice(&lines[end_line..]);
 
         let new_file_content = new_lines.join("\n") + "\n";
-        
+
         fs::write(file_path, &new_file_content)
             .context(format!("Failed to write file: {}", file_path))?;
 
@@ -181,21 +205,32 @@ impl EditFileTool {
         let new_count = new_content.lines().count();
 
         Ok(ToolOutput {
-            output: json!({ 
-                "file_path": file_path, 
+            output: json!({
+                "file_path": file_path,
                 "modified": true,
                 "lines_replaced": old_count,
                 "new_lines": new_count
             }),
-            observation: format!("Replaced lines {}-{} in {}", start_line, end_line, file_path),
-            display: Some(format!("✓ Modified {} ({} -> {} lines)", file_path, old_count, new_count)),
+            observation: format!(
+                "Replaced lines {}-{} in {}",
+                start_line, end_line, file_path
+            ),
+            display: Some(format!(
+                "✓ Modified {} ({} -> {} lines)",
+                file_path, old_count, new_count
+            )),
             status: "success".to_string(),
         })
     }
 
-    fn read_file(&self, file_path: &str, start_line: Option<usize>, end_line: Option<usize>) -> Result<ToolOutput> {
-        let content = fs::read_to_string(file_path)
-            .context(format!("Failed to read file: {}", file_path))?;
+    fn read_file(
+        &self,
+        file_path: &str,
+        start_line: Option<usize>,
+        end_line: Option<usize>,
+    ) -> Result<ToolOutput> {
+        let content =
+            fs::read_to_string(file_path).context(format!("Failed to read file: {}", file_path))?;
 
         let lines: Vec<&str> = content.lines().collect();
         let total_lines = lines.len();
@@ -217,7 +252,13 @@ impl EditFileTool {
                 "end_line": end,
                 "content": selected_lines.join("\n")
             }),
-            observation: format!("Read lines {}-{} from {} ({} total lines)", start + 1, end, file_path, total_lines),
+            observation: format!(
+                "Read lines {}-{} from {} ({} total lines)",
+                start + 1,
+                end,
+                file_path,
+                total_lines
+            ),
             display: Some(selected_lines.join("\n")),
             status: "success".to_string(),
         })

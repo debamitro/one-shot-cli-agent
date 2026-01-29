@@ -118,7 +118,7 @@ impl LLMProvider for AnthropicProvider {
         tools: Option<Vec<serde_json::Value>>,
     ) -> Result<StreamChunk> {
         let (system, converted_messages) = self.convert_messages(messages);
-        
+
         let request = AnthropicRequest {
             model: self.model.clone(),
             max_tokens: 8192,
@@ -173,7 +173,7 @@ impl LLMProvider for AnthropicProvider {
         tools: Option<Vec<serde_json::Value>>,
     ) -> Result<tokio::sync::mpsc::Receiver<StreamChunk>> {
         let (system, converted_messages) = self.convert_messages(messages);
-        
+
         let request = AnthropicRequest {
             model: self.model.clone(),
             max_tokens: 8192,
@@ -199,14 +199,14 @@ impl LLMProvider for AnthropicProvider {
         tokio::spawn(async move {
             let mut stream = response.bytes_stream();
             use futures::StreamExt;
-            
+
             // State for accumulating tool call parameters
             let mut current_tool_call: Option<(String, String, String)> = None; // (id, name, accumulated_json)
 
             while let Some(chunk_result) = stream.next().await {
                 if let Ok(chunk) = chunk_result {
                     let text = String::from_utf8_lossy(&chunk);
-                    
+
                     for line in text.lines() {
                         if let Some(data) = line.strip_prefix("data: ") {
                             if let Ok(event) = serde_json::from_str::<StreamEvent>(data) {
@@ -223,11 +223,13 @@ impl LLMProvider for AnthropicProvider {
                                                     return;
                                                 }
                                             }
-                                            
+
                                             // Accumulate tool input JSON deltas
                                             if delta.delta_type == "input_json_delta" {
                                                 if let Some(partial_json) = delta.partial_json {
-                                                    if let Some((_, _, ref mut json)) = current_tool_call {
+                                                    if let Some((_, _, ref mut json)) =
+                                                        current_tool_call
+                                                    {
                                                         json.push_str(&partial_json);
                                                     }
                                                 }
@@ -244,13 +246,15 @@ impl LLMProvider for AnthropicProvider {
                                     }
                                     "content_block_stop" => {
                                         // Finalize accumulated tool call
-                                        if let Some((id, name, json_str)) = current_tool_call.take() {
+                                        if let Some((id, name, json_str)) = current_tool_call.take()
+                                        {
                                             let arguments = if json_str.is_empty() {
                                                 serde_json::json!({})
                                             } else {
-                                                serde_json::from_str(&json_str).unwrap_or_else(|_| serde_json::json!({}))
+                                                serde_json::from_str(&json_str)
+                                                    .unwrap_or_else(|_| serde_json::json!({}))
                                             };
-                                            
+
                                             let chunk = StreamChunk {
                                                 content: None,
                                                 tool_calls: vec![ToolCall {
@@ -281,13 +285,15 @@ impl LLMProvider for AnthropicProvider {
                     }
                 }
             }
-            
+
             // Send final finished chunk if stream ended without message_stop
-            let _ = tx.send(StreamChunk {
-                content: None,
-                tool_calls: Vec::new(),
-                finished: true,
-            }).await;
+            let _ = tx
+                .send(StreamChunk {
+                    content: None,
+                    tool_calls: Vec::new(),
+                    finished: true,
+                })
+                .await;
         });
 
         Ok(rx)
