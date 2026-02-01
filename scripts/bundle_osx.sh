@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 
-ver=0.3
+ver=0.4
 arch="${ARCH:-aarch64-apple-darwin}"
 cargo build --target ${arch} --release
 cd target/${arch}/release
