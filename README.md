@@ -33,6 +33,7 @@ A command-line interactive coding agent built in Rust with support for OpenAI an
 
 ### Web Search Tool
 - Uses DuckDuckGo by default, can use Serper API if the SERPER_API_KEY is set
+
 ## Installation
 
 ### Download pre-built releases
@@ -42,6 +43,7 @@ This is the easiest method. Just unzip and run from the command-line.
 - [Windows](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.3/codeagent_0.3_win.zip)
 - [MacOS (Apple Silicon)](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.3/codeagent_0.3_aarch64-apple-darwin.zip)
 - [MacOS (Intel)](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.3/codeagent_0.3_x86_64-apple-darwin.zip)
+- [Linux](https://github.com/debamitro/one-shot-cli-agent/releases/download/v0.3/codeagent_0.3_linux.zip)
 
 ### Build from Source
 
