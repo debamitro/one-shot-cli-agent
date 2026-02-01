@@ -76,12 +76,16 @@ codeagent --provider anthropic
 
 ```
 Options:
-  -p, --provider <PROVIDER>    Provider to use: openai or anthropic
-  -a, --api-key <API_KEY>      API key (or set OPENAI_API_KEY/ANTHROPIC_API_KEY env var)
-  -m, --model <MODEL>          Model to use (optional, uses provider default)
-  -d, --directory <DIRECTORY>  Working directory [default: .]
-  -s, --session <SESSION>      Session ID to resume
-  -h, --help                   Print help
+  -p, --provider <PROVIDER>              Provider to use: openai or anthropic
+  -a, --api-key <API_KEY>                API key (or set OPENAI_API_KEY/ANTHROPIC_API_KEY env var)
+  -m, --model <MODEL>                    Model to use (optional, uses provider default)
+  -d, --directory <DIRECTORY>            Working directory [default: .]
+  -s, --session <SESSION>                Session ID to resume
+      --openai-base-url <URL>            OpenAI base URL (optional, overrides default)
+      --anthropic-base-url <URL>         Anthropic base URL (optional, overrides default)
+      --system-prompt <TEXT>             System prompt override (direct text)
+      --system-prompt-file <FILE>        System prompt override (read from file)
+  -h, --help                             Print help
 ```
 
 ### Interactive Commands
@@ -126,18 +130,21 @@ Sessions are stored in `~/.codeagent/sessions/` as JSON files. Each session cont
 ```
 codeagent/
 ├── src/
-│   ├── main.rs           # CLI entry point and REPL
-│   ├── provider/         # LLM provider implementations
-│   │   ├── mod.rs        # Provider trait
-│   │   ├── openai.rs     # OpenAI integration
-│   │   └── anthropic.rs  # Anthropic integration
-│   ├── session/          # Session management
-│   │   └── mod.rs        # Session storage and history
-│   └── tools/            # Tool implementations
-│       ├── mod.rs        # Tool registry
-│       ├── file_search.rs
-│       ├── edit_file.rs
-│       └── bash.rs
+│   ├── main.rs              # CLI entry point and REPL
+│   ├── provider/            # LLM provider implementations
+│   │   ├── mod.rs           # Provider trait
+│   │   ├── openai.rs        # OpenAI integration
+│   │   └── anthropic.rs     # Anthropic integration
+│   ├── session/             # Session management
+│   │   └── mod.rs           # Session storage and history
+│   └── tools/               # Tool implementations
+│       ├── mod.rs           # Tool registry
+│       ├── file_search.rs   # File search (glob/grep)
+│       ├── edit_file.rs     # File editing operations
+│       ├── bash.rs          # Command execution
+│       ├── web_search.rs    # Serper API web search
+│       ├── web_search_ddg.rs # DuckDuckGo web search
+│       └── url_fetch.rs     # URL content fetching
 └── Cargo.toml
 ```
 
