@@ -117,18 +117,19 @@ impl FileSearchTool {
         max_results: Option<usize>,
     ) -> Result<ToolOutput> {
         // Try grep tools in order of preference: ripgrep > grep > findstr
-        if let Ok(output) = self.try_ripgrep(pattern, path, file_type, case_sensitive, max_results) {
+        if let Ok(output) = self.try_ripgrep(pattern, path, file_type, case_sensitive, max_results)
+        {
             return Ok(output);
         }
-        
+
         if let Ok(output) = self.try_grep(pattern, path, case_sensitive, max_results) {
             return Ok(output);
         }
-        
+
         if let Ok(output) = self.try_findstr(pattern, path, case_sensitive, max_results) {
             return Ok(output);
         }
-        
+
         Err(anyhow::anyhow!(
             "No grep tool available. Please install ripgrep (recommended), or ensure grep (Unix) or findstr (Windows) is available."
         ))
@@ -258,7 +259,7 @@ impl FileSearchTool {
     ) -> Result<ToolOutput> {
         // findstr uses simple wildcards, not regex - escape special chars
         let escaped_pattern = pattern.replace('*', ".*");
-        
+
         let mut cmd = Command::new("findstr");
         cmd.arg("/N") // line numbers
             .arg("/S"); // subdirectories

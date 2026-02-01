@@ -14,6 +14,7 @@ pub struct SessionInfo {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub message_count: usize,
+    pub system_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,7 +42,12 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(title: String, directory: String, storage_path: PathBuf) -> Self {
+    pub fn new(
+        title: String,
+        directory: String,
+        storage_path: PathBuf,
+        system_prompt: Option<String>,
+    ) -> Self {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
 
@@ -53,6 +59,7 @@ impl Session {
                 created_at: now,
                 updated_at: now,
                 message_count: 0,
+                system_prompt,
             },
             messages: Vec::new(),
             storage_path,
@@ -172,6 +179,15 @@ impl Session {
         history
     }
 
+    pub fn get_system_prompt(&self) -> Option<String> {
+        self.info.system_prompt.clone()
+    }
+
+    pub fn set_system_prompt(&mut self, prompt: Option<String>) {
+        self.info.system_prompt = prompt;
+        self.info.updated_at = Utc::now();
+    }
+
     pub fn export_to_markdown(&self, filename: Option<String>) -> Result<String> {
         // Generate filename if not provided
         let filename = filename.unwrap_or_else(|| {
@@ -189,13 +205,19 @@ impl Session {
 
         // Build markdown content
         let mut markdown = String::new();
-        
+
         // Header with session metadata
         markdown.push_str(&format!("# {}\n\n", self.info.title));
         markdown.push_str(&format!("**Session ID**: {}\n", self.info.id));
         markdown.push_str(&format!("**Directory**: {}\n", self.info.directory));
-        markdown.push_str(&format!("**Created**: {}\n", self.info.created_at.format("%Y-%m-%d %H:%M:%S UTC")));
-        markdown.push_str(&format!("**Updated**: {}\n", self.info.updated_at.format("%Y-%m-%d %H:%M:%S UTC")));
+        markdown.push_str(&format!(
+            "**Created**: {}\n",
+            self.info.created_at.format("%Y-%m-%d %H:%M:%S UTC")
+        ));
+        markdown.push_str(&format!(
+            "**Updated**: {}\n",
+            self.info.updated_at.format("%Y-%m-%d %H:%M:%S UTC")
+        ));
         markdown.push_str(&format!("**Messages**: {}\n\n", self.info.message_count));
         markdown.push_str("---\n\n");
 
@@ -225,19 +247,32 @@ impl Session {
                         if !msg.tool_calls.is_empty() {
                             markdown.push_str("### Tool Calls\n\n");
                             for tool_call in &msg.tool_calls {
-                                markdown.push_str(&format!("- **{}** (`{}`)\n", tool_call.name, tool_call.id));
-                                
+                                markdown.push_str(&format!(
+                                    "- **{}** (`{}`)\n",
+                                    tool_call.name, tool_call.id
+                                ));
+
                                 // Format arguments as JSON
-                                if let Ok(formatted_args) = serde_json::to_string_pretty(&tool_call.arguments) {
+                                if let Ok(formatted_args) =
+                                    serde_json::to_string_pretty(&tool_call.arguments)
+                                {
                                     markdown.push_str("  - Arguments:\n");
                                     markdown.push_str("    ```json\n");
-                                    markdown.push_str(&format!("    {}\n", formatted_args.replace("\n", "\n    ")));
+                                    markdown.push_str(&format!(
+                                        "    {}\n",
+                                        formatted_args.replace("\n", "\n    ")
+                                    ));
                                     markdown.push_str("    ```\n");
                                 }
 
                                 // Find corresponding result
-                                if let Some(result) = msg.tool_results.iter().find(|r| r.tool_call_id == tool_call.id) {
-                                    markdown.push_str(&format!("  - Result: {}\n", result.observation));
+                                if let Some(result) = msg
+                                    .tool_results
+                                    .iter()
+                                    .find(|r| r.tool_call_id == tool_call.id)
+                                {
+                                    markdown
+                                        .push_str(&format!("  - Result: {}\n", result.observation));
                                     markdown.push_str(&format!("  - Status: {}\n", result.status));
                                 } else {
                                     markdown.push_str("  - Result: *No result recorded*\n");
@@ -263,7 +298,13 @@ impl Session {
 // Helper functions
 fn sanitize_filename(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect()
 }
 

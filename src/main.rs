@@ -39,6 +39,12 @@ struct Args {
 
     #[arg(long, help = "Anthropic base URL (optional, overrides default)")]
     anthropic_base_url: Option<String>,
+
+    #[arg(long, help = "System prompt override (direct text)")]
+    system_prompt: Option<String>,
+
+    #[arg(long, help = "System prompt override (read from file)")]
+    system_prompt_file: Option<String>,
 }
 
 #[tokio::main]
@@ -83,23 +89,49 @@ async fn main() -> Result<()> {
         .join(".codeagent")
         .join("sessions");
 
+    // Resolve system prompt (priority: CLI arg > file > default)
+    const DEFAULT_SYSTEM_PROMPT: &str = "You are a helpful coding assistant. You have access to tools for file operations, code search, and command execution. Use them to help the user with their coding tasks.";
+
+    let resolved_prompt = if let Some(prompt) = args.system_prompt {
+        Some(prompt)
+    } else if let Some(file_path) = args.system_prompt_file {
+        let content = std::fs::read_to_string(&file_path).map_err(|e| {
+            anyhow::anyhow!("Failed to read system prompt file '{}': {}", file_path, e)
+        })?;
+        Some(content)
+    } else {
+        None
+    };
+
     // Load or create session
     let mut session = if let Some(session_id) = args.session {
         println!("{}", format!("Resuming session: {}", session_id).cyan());
-        Session::load(&session_id, storage_path)?
+        let mut session = Session::load(&session_id, storage_path)?;
+
+        // Override session prompt if CLI arg provided
+        if resolved_prompt.is_some() {
+            session.set_system_prompt(resolved_prompt.clone());
+        }
+
+        session
     } else {
         let title: String = Input::with_theme(&ColorfulTheme::default())
             .with_prompt("Session title")
             .default("New Coding Session".to_string())
             .interact_text()?;
 
-        let session = Session::new(title, args.directory, storage_path);
+        let session = Session::new(title, args.directory, storage_path, resolved_prompt.clone());
         println!(
             "{}",
             format!("Created session: {}", session.info.id).green()
         );
         session
     };
+
+    // Get final system prompt (session stored > default)
+    let system_prompt = session
+        .get_system_prompt()
+        .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
 
     // Initialize tools
     let web_search_api_key = std::env::var("SERPER_API_KEY").ok();
@@ -125,7 +157,8 @@ async fn main() -> Result<()> {
     );
     println!(
         "{}",
-        "Type 'exit' to quit, 'save' to save session, 'export [file]' to export as markdown\n".dimmed()
+        "Type 'exit' to quit, 'save' to save session, 'export [file]' to export as markdown\n"
+            .dimmed()
     );
 
     // Main REPL loop
@@ -173,7 +206,7 @@ async fn main() -> Result<()> {
         // Get conversation history with system prompt
         let mut messages = vec![Message {
             role: "system".to_string(),
-            content: "You are a helpful coding assistant. You have access to tools for file operations, code search, and command execution. Use them to help the user with their coding tasks.".to_string(),
+            content: system_prompt.clone(),
         }];
         messages.extend(session.get_conversation_history());
 
