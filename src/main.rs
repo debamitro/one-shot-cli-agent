@@ -254,6 +254,25 @@ async fn main() -> Result<()> {
             for tool_call in &all_tool_calls {
                 println!("  {} {}", "→".blue(), tool_call.name.bold());
 
+                // Print command details for bash tool
+                if tool_call.name == "bash" {
+                    if let Some(cmd) = tool_call.arguments.get("command") {
+                        if let Some(cmd_str) = cmd.as_str() {
+                            println!("    Command: {}", cmd_str.dimmed());
+                        }
+                    }
+                    if let Some(desc) = tool_call.arguments.get("description") {
+                        if let Some(desc_str) = desc.as_str() {
+                            println!("    Description: {}", desc_str.dimmed());
+                        }
+                    }
+                    if let Some(cwd) = tool_call.arguments.get("cwd") {
+                        if let Some(cwd_str) = cwd.as_str() {
+                            println!("    Working directory: {}", cwd_str.dimmed());
+                        }
+                    }
+                }
+
                 match tool_registry.execute(&tool_call.name, tool_call.arguments.clone()) {
                     Ok(result) => {
                         println!("    {}", result.observation.green());

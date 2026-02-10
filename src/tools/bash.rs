@@ -1,6 +1,7 @@
 use super::{Tool, ToolOutput};
 use anyhow::{Context, Result};
 use serde_json::json;
+use std::io::{self, Write};
 use std::process::{Command, Stdio};
 
 pub struct BashTool;
@@ -11,7 +12,7 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &str {
-        "Execute shell commands in the system. Provide the full command string in the 'command' parameter. Optionally specify 'cwd' to set the working directory."
+        "Execute shell commands in the system. Provide the full command string in the 'command' parameter. Optionally specify 'cwd' to set the working directory. Set 'skip_approval' to true for read-only commands to skip user confirmation."
     }
 
     fn input_schema(&self) -> serde_json::Value {
@@ -25,6 +26,15 @@ impl Tool for BashTool {
                 "cwd": {
                     "type": "string",
                     "description": "Working directory for the command (optional)"
+                },
+                "skip_approval": {
+                    "type": "boolean",
+                    "description": "Skip user approval prompt. Use true ONLY for read-only commands (e.g., git status, ls, ps). Default: false",
+                    "default": false
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable description of what the command does (optional, used in approval prompt)"
                 }
             },
             "required": ["command"]
@@ -37,6 +47,41 @@ impl Tool for BashTool {
             .and_then(|v| v.as_str())
             .context("Missing command")?;
         let cwd = input.get("cwd").and_then(|v| v.as_str());
+        let skip_approval = input
+            .get("skip_approval")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let description = input.get("description").and_then(|v| v.as_str());
+
+        // Approval mechanism
+        if !skip_approval {
+            println!("\n🔍 Bash Command Approval Required:");
+            if let Some(desc) = description {
+                println!("   Description: {}", desc);
+            }
+            println!("   Command: {}", command);
+            if let Some(working_dir) = cwd {
+                println!("   Working directory: {}", working_dir);
+            }
+            print!("\nExecute this command? [y/N]: ");
+            io::stdout().flush()?;
+
+            let mut input_line = String::new();
+            io::stdin().read_line(&mut input_line)?;
+            let approved = matches!(input_line.trim().to_lowercase().as_str(), "y" | "yes");
+
+            if !approved {
+                return Ok(ToolOutput {
+                    output: json!({
+                        "approved": false,
+                        "command": command
+                    }),
+                    observation: "Command execution cancelled by user".to_string(),
+                    display: Some("User declined to execute the command".to_string()),
+                    status: "cancelled".to_string(),
+                });
+            }
+        }
 
         let mut cmd = if cfg!(target_os = "windows") {
             let mut c = Command::new("cmd");
