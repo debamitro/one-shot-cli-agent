@@ -45,11 +45,39 @@ struct Args {
 
     #[arg(long, help = "System prompt override (read from file)")]
     system_prompt_file: Option<String>,
+
+    #[arg(
+        short = 'i',
+        long,
+        help = "Input for non-interactive mode (single task to execute)"
+    )]
+    input: Option<String>,
+
+    #[arg(
+        long,
+        help = "Save session in non-interactive mode (sessions not saved by default)"
+    )]
+    save: bool,
+
+    #[arg(
+        long,
+        help = "Session title for non-interactive mode (auto-generated if not provided)"
+    )]
+    session_title: Option<String>,
+
+    #[arg(
+        long,
+        help = "Auto-approve all bash commands (non-interactive mode only, use with caution)"
+    )]
+    auto_approve: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
+
+    // Detect mode: interactive (default) vs non-interactive (--input provided)
+    let is_interactive = args.input.is_none();
 
     // Get API key from args or environment
     let api_key = args
@@ -115,10 +143,19 @@ async fn main() -> Result<()> {
 
         session
     } else {
-        let title: String = Input::with_theme(&ColorfulTheme::default())
-            .with_prompt("Session title")
-            .default("New Coding Session".to_string())
-            .interact_text()?;
+        let title = if is_interactive {
+            // Interactive mode: prompt user
+            Input::with_theme(&ColorfulTheme::default())
+                .with_prompt("Session title")
+                .default("New Coding Session".to_string())
+                .interact_text()?
+        } else {
+            // Non-interactive mode: use CLI arg or auto-generate
+            args.session_title.unwrap_or_else(|| {
+                let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
+                format!("Batch_{}", timestamp)
+            })
+        };
 
         let session = Session::new(title, args.directory, storage_path, resolved_prompt.clone());
         println!(
@@ -143,61 +180,202 @@ async fn main() -> Result<()> {
         .collect();
 
     // Print welcome message
-    println!(
-        "\n{}",
-        "CodeAgent - Interactive Coding Assistant".bold().cyan()
-    );
-    println!(
-        "{}",
-        format!(
-            "Provider: {} | Directory: {}",
-            args.provider, session.info.directory
-        )
-        .dimmed()
-    );
-    println!(
-        "{}",
-        "Type 'exit' to quit, 'save' to save session, 'export [file]' to export as markdown\n"
+    if is_interactive {
+        println!(
+            "\n{}",
+            "CodeAgent - Interactive Coding Assistant".bold().cyan()
+        );
+        println!(
+            "{}",
+            format!(
+                "Provider: {} | Directory: {}",
+                args.provider, session.info.directory
+            )
             .dimmed()
-    );
+        );
+        println!(
+            "{}",
+            "Type 'exit' to quit, 'save' to save session, 'export [file]' to export as markdown\n"
+                .dimmed()
+        );
+    } else {
+        println!(
+            "{}",
+            format!(
+                "CodeAgent (non-interactive) | Provider: {} | Directory: {}",
+                args.provider, session.info.directory
+            )
+            .dimmed()
+        );
+    }
 
-    // Main REPL loop
-    loop {
-        let user_input: String = Input::with_theme(&ColorfulTheme::default())
-            .with_prompt("You")
-            .interact_text()?;
+    // Main execution: interactive REPL or non-interactive single run
+    if is_interactive {
+        // Interactive REPL mode
+        loop {
+            let user_input: String = Input::with_theme(&ColorfulTheme::default())
+                .with_prompt("You")
+                .interact_text()?;
 
-        match user_input.trim() {
-            "exit" => {
-                session.save()?;
-                println!("{}", "Session saved. Goodbye!".green());
-                break;
-            }
-            "save" => {
-                session.save()?;
-                println!("{}", "Session saved.".green());
-                continue;
-            }
-            input if input.starts_with("export") => {
-                // Parse optional filename argument
-                let filename = input
-                    .strip_prefix("export")
-                    .map(|s| s.trim())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string());
+            match user_input.trim() {
+                "exit" => {
+                    session.save()?;
+                    println!("{}", "Session saved. Goodbye!".green());
+                    break;
+                }
+                "save" => {
+                    session.save()?;
+                    println!("{}", "Session saved.".green());
+                    continue;
+                }
+                input if input.starts_with("export") => {
+                    // Parse optional filename argument
+                    let filename = input
+                        .strip_prefix("export")
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string());
 
-                match session.export_to_markdown(filename) {
-                    Ok(path) => {
-                        println!("{}", format!("Exported to: {}", path).green());
+                    match session.export_to_markdown(filename) {
+                        Ok(path) => {
+                            println!("{}", format!("Exported to: {}", path).green());
+                        }
+                        Err(e) => {
+                            println!("{}", format!("Export failed: {}", e).red());
+                        }
                     }
-                    Err(e) => {
-                        println!("{}", format!("Export failed: {}", e).red());
+                    continue;
+                }
+                "" => continue,
+                _ => {}
+            }
+
+            // Add user message
+            session.add_user_message(user_input);
+
+            // Get conversation history with system prompt
+            let mut messages = vec![Message {
+                role: "system".to_string(),
+                content: system_prompt.clone(),
+            }];
+            messages.extend(session.get_conversation_history());
+
+            // Agent loop - continue until no tool calls
+            loop {
+                println!("{}", "\nAssistant: ".bold().blue());
+
+                // Stream completion
+                let mut rx = provider
+                    .stream_completion(messages.clone(), Some(tool_definitions.clone()))
+                    .await?;
+
+                let mut full_content = String::new();
+                let mut all_tool_calls = Vec::new();
+
+                while let Some(chunk) = rx.recv().await {
+                    if let Some(content) = chunk.content {
+                        print!("{}", content);
+                        full_content.push_str(&content);
+                    }
+
+                    all_tool_calls.extend(chunk.tool_calls);
+
+                    if chunk.finished {
+                        break;
                     }
                 }
-                continue;
+                println!(); // Newline after streaming
+
+                // Add assistant message
+                let content = if full_content.is_empty() {
+                    None
+                } else {
+                    Some(full_content)
+                };
+                session.add_assistant_message(content.clone(), all_tool_calls.clone());
+
+                // If no tool calls, we're done
+                if all_tool_calls.is_empty() {
+                    break;
+                }
+
+                // Execute tool calls
+                println!("\n{}", "Executing tools...".yellow());
+                for tool_call in &all_tool_calls {
+                    println!("  {} {}", "→".blue(), tool_call.name.bold());
+
+                    // Print command details for bash tool
+                    if tool_call.name == "bash" {
+                        if let Some(cmd) = tool_call.arguments.get("command") {
+                            if let Some(cmd_str) = cmd.as_str() {
+                                println!("    Command: {}", cmd_str.dimmed());
+                            }
+                        }
+                        if let Some(desc) = tool_call.arguments.get("description") {
+                            if let Some(desc_str) = desc.as_str() {
+                                println!("    Description: {}", desc_str.dimmed());
+                            }
+                        }
+                        if let Some(cwd) = tool_call.arguments.get("cwd") {
+                            if let Some(cwd_str) = cwd.as_str() {
+                                println!("    Working directory: {}", cwd_str.dimmed());
+                            }
+                        }
+                    }
+
+                    match tool_registry.execute(&tool_call.name, tool_call.arguments.clone()) {
+                        Ok(result) => {
+                            println!("    {}", result.observation.green());
+                            if let Some(display) = &result.display {
+                                if !display.is_empty() {
+                                    println!("\n{}\n", display.dimmed());
+                                }
+                            }
+
+                            let observation = result.observation.clone();
+
+                            session.add_tool_result(
+                                tool_call.id.clone(),
+                                result.output,
+                                observation.clone(),
+                                result.status,
+                            );
+
+                            // Add tool result to messages for next iteration
+                            messages.push(Message {
+                                role: "user".to_string(),
+                                content: format!("Tool '{}' result: {}", tool_call.name, observation),
+                            });
+                        }
+                        Err(e) => {
+                            let error_msg = format!("Tool execution failed: {}", e);
+                            println!("    {}", error_msg.red());
+
+                            session.add_tool_result(
+                                tool_call.id.clone(),
+                                serde_json::json!({"error": error_msg}),
+                                error_msg.clone(),
+                                "error".to_string(),
+                            );
+
+                            messages.push(Message {
+                                role: "user".to_string(),
+                                content: format!("Tool '{}' failed: {}", tool_call.name, error_msg),
+                            });
+                        }
+                    }
+                }
             }
-            "" => continue,
-            _ => {}
+
+            // Save after each interaction
+            session.save()?;
+        }
+    } else {
+        // Non-interactive mode
+        let user_input = args.input.unwrap(); // Safe: checked is_interactive
+
+        if user_input.is_empty() {
+            return Err(anyhow::anyhow!("Input cannot be empty for non-interactive mode"));
         }
 
         // Add user message
@@ -254,26 +432,34 @@ async fn main() -> Result<()> {
             for tool_call in &all_tool_calls {
                 println!("  {} {}", "→".blue(), tool_call.name.bold());
 
+                // Handle auto-approve for bash tool
+                let mut modified_args = tool_call.arguments.clone();
+                if tool_call.name == "bash" && args.auto_approve {
+                    if let Some(obj) = modified_args.as_object_mut() {
+                        obj.insert("skip_approval".to_string(), serde_json::json!(true));
+                    }
+                }
+
                 // Print command details for bash tool
                 if tool_call.name == "bash" {
-                    if let Some(cmd) = tool_call.arguments.get("command") {
+                    if let Some(cmd) = modified_args.get("command") {
                         if let Some(cmd_str) = cmd.as_str() {
                             println!("    Command: {}", cmd_str.dimmed());
                         }
                     }
-                    if let Some(desc) = tool_call.arguments.get("description") {
+                    if let Some(desc) = modified_args.get("description") {
                         if let Some(desc_str) = desc.as_str() {
                             println!("    Description: {}", desc_str.dimmed());
                         }
                     }
-                    if let Some(cwd) = tool_call.arguments.get("cwd") {
+                    if let Some(cwd) = modified_args.get("cwd") {
                         if let Some(cwd_str) = cwd.as_str() {
                             println!("    Working directory: {}", cwd_str.dimmed());
                         }
                     }
                 }
 
-                match tool_registry.execute(&tool_call.name, tool_call.arguments.clone()) {
+                match tool_registry.execute(&tool_call.name, modified_args) {
                     Ok(result) => {
                         println!("    {}", result.observation.green());
                         if let Some(display) = &result.display {
@@ -317,8 +503,11 @@ async fn main() -> Result<()> {
             }
         }
 
-        // Save after each interaction
-        session.save()?;
+        // Save session if --save flag set
+        if args.save {
+            session.save()?;
+            println!("{}", "\nSession saved.".green());
+        }
     }
 
     Ok(())
