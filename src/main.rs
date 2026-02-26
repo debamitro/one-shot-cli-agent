@@ -70,6 +70,13 @@ struct Args {
         help = "Auto-approve all bash commands (non-interactive mode only, use with caution)"
     )]
     auto_approve: bool,
+
+    #[arg(
+        long,
+        help = "Maximum tool call iterations before forcing final answer (default: 5)",
+        default_value = "5"
+    )]
+    max_tool_iterations: usize,
 }
 
 #[tokio::main]
@@ -260,13 +267,21 @@ async fn main() -> Result<()> {
             }];
             messages.extend(session.get_conversation_history());
 
-            // Agent loop - continue until no tool calls
+            // Agent loop - continue until no tool calls or max iterations
+            let mut iteration = 0;
             loop {
                 println!("{}", "\nAssistant: ".bold().blue());
 
+                // Conditionally pass tools based on iteration count
+                let tools = if iteration < args.max_tool_iterations {
+                    Some(tool_definitions.clone())
+                } else {
+                    None
+                };
+
                 // Stream completion
                 let mut rx = provider
-                    .stream_completion(messages.clone(), Some(tool_definitions.clone()))
+                    .stream_completion(messages.clone(), tools)
                     .await?;
 
                 let mut full_content = String::new();
@@ -299,10 +314,29 @@ async fn main() -> Result<()> {
                     break;
                 }
 
+                // Check if max iterations reached
+                if iteration >= args.max_tool_iterations {
+                    println!(
+                        "\n{}",
+                        format!(
+                            "⚠ Maximum tool iterations ({}) reached. Forcing final answer.",
+                            args.max_tool_iterations
+                        )
+                        .yellow()
+                    );
+                    break;
+                }
+
                 // Execute tool calls
                 println!("\n{}", "Executing tools...".yellow());
+                let mut finish_called = false;
                 for tool_call in &all_tool_calls {
                     println!("  {} {}", "→".blue(), tool_call.name.bold());
+
+                    // Check if this is the finish tool
+                    if tool_call.name == "finish" {
+                        finish_called = true;
+                    }
 
                     // Print command details for bash tool
                     if tool_call.name == "bash" {
@@ -365,6 +399,14 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
+
+                // If finish tool was called, exit the agent loop
+                if finish_called {
+                    break;
+                }
+
+                // Increment iteration counter
+                iteration += 1;
             }
 
             // Save after each interaction
@@ -388,13 +430,21 @@ async fn main() -> Result<()> {
         }];
         messages.extend(session.get_conversation_history());
 
-        // Agent loop - continue until no tool calls
+        // Agent loop - continue until no tool calls or max iterations
+        let mut iteration = 0;
         loop {
             println!("{}", "\nAssistant: ".bold().blue());
 
+            // Conditionally pass tools based on iteration count
+            let tools = if iteration < args.max_tool_iterations {
+                Some(tool_definitions.clone())
+            } else {
+                None
+            };
+
             // Stream completion
             let mut rx = provider
-                .stream_completion(messages.clone(), Some(tool_definitions.clone()))
+                .stream_completion(messages.clone(), tools)
                 .await?;
 
             let mut full_content = String::new();
@@ -427,10 +477,29 @@ async fn main() -> Result<()> {
                 break;
             }
 
+            // Check if max iterations reached
+            if iteration >= args.max_tool_iterations {
+                println!(
+                    "\n{}",
+                    format!(
+                        "⚠ Maximum tool iterations ({}) reached. Forcing final answer.",
+                        args.max_tool_iterations
+                    )
+                    .yellow()
+                );
+                break;
+            }
+
             // Execute tool calls
             println!("\n{}", "Executing tools...".yellow());
+            let mut finish_called = false;
             for tool_call in &all_tool_calls {
                 println!("  {} {}", "→".blue(), tool_call.name.bold());
+
+                // Check if this is the finish tool
+                if tool_call.name == "finish" {
+                    finish_called = true;
+                }
 
                 // Handle auto-approve for bash tool
                 let mut modified_args = tool_call.arguments.clone();
@@ -501,6 +570,14 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+
+            // If finish tool was called, exit the agent loop
+            if finish_called {
+                break;
+            }
+
+            // Increment iteration counter
+            iteration += 1;
         }
 
         // Save session if --save flag set

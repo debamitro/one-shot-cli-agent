@@ -1,6 +1,7 @@
 pub mod bash;
 pub mod edit_file;
 pub mod file_search;
+pub mod finish;
 pub mod url_fetch;
 pub mod web_search;
 pub mod web_search_ddg;
@@ -45,6 +46,7 @@ impl ToolRegistry {
         registry.register(Box::new(file_search::FileSearchTool));
         registry.register(Box::new(edit_file::EditFileTool));
         registry.register(Box::new(bash::BashTool));
+        registry.register(Box::new(finish::FinishTool));
 
         registry
     }
@@ -58,6 +60,7 @@ impl ToolRegistry {
         registry.register(Box::new(file_search::FileSearchTool));
         registry.register(Box::new(edit_file::EditFileTool));
         registry.register(Box::new(bash::BashTool));
+        registry.register(Box::new(finish::FinishTool));
 
         // Web search tools: Serper API (if key provided) or DuckDuckGo (free fallback)
         if web_search_api_key.is_some() {
