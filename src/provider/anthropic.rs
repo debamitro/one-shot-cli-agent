@@ -121,7 +121,7 @@ impl LLMProvider for AnthropicProvider {
 
         let request = AnthropicRequest {
             model: self.model.clone(),
-            max_tokens: 8192,
+            max_tokens: 65536,
             messages: converted_messages,
             tools: tools.map(|t| self.convert_tools(t)),
             system,
