@@ -8,7 +8,7 @@ use serde_json::json;
 #[derive(Debug, Serialize)]
 struct AnthropicMessage {
     role: String,
-    content: String,
+    content: serde_json::Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -77,15 +77,87 @@ impl AnthropicProvider {
 
     fn convert_messages(&self, messages: Vec<Message>) -> (Option<String>, Vec<AnthropicMessage>) {
         let mut system = None;
-        let mut converted = Vec::new();
+        let mut converted: Vec<AnthropicMessage> = Vec::new();
 
         for msg in messages {
             match msg.role.as_str() {
                 "system" => system = Some(msg.content),
-                _ => converted.push(AnthropicMessage {
-                    role: msg.role,
-                    content: msg.content,
-                }),
+                "assistant" => {
+                    let mut content_blocks: Vec<serde_json::Value> = Vec::new();
+
+                    // Add text block if present
+                    if !msg.content.is_empty() {
+                        content_blocks.push(serde_json::json!({
+                            "type": "text",
+                            "text": msg.content
+                        }));
+                    }
+
+                    // Add tool_use blocks for each tool call
+                    for tc in &msg.tool_calls {
+                        content_blocks.push(serde_json::json!({
+                            "type": "tool_use",
+                            "id": tc.id,
+                            "name": tc.name,
+                            "input": tc.arguments
+                        }));
+                    }
+
+                    if content_blocks.is_empty() {
+                        content_blocks.push(serde_json::json!({
+                            "type": "text",
+                            "text": ""
+                        }));
+                    }
+
+                    // Merge with previous assistant turn if possible
+                    if let Some(last) = converted.last_mut() {
+                        if last.role == "assistant" {
+                            if let Some(arr) = last.content.as_array_mut() {
+                                arr.extend(content_blocks);
+                                continue;
+                            }
+                        }
+                    }
+
+                    converted.push(AnthropicMessage {
+                        role: "assistant".to_string(),
+                        content: serde_json::Value::Array(content_blocks),
+                    });
+                }
+                "user" => {
+                    // Check if this is a tool result message
+                    if let Some(tool_call_id) = msg.tool_call_id {
+                        let tool_result_block = serde_json::json!({
+                            "type": "tool_result",
+                            "tool_use_id": tool_call_id,
+                            "content": msg.content
+                        });
+
+                        // Merge into last user message if it already contains tool_result blocks
+                        if let Some(last) = converted.last_mut() {
+                            if last.role == "user" {
+                                if let Some(arr) = last.content.as_array_mut() {
+                                    if arr.iter().any(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_result")) {
+                                        arr.push(tool_result_block);
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+
+                        converted.push(AnthropicMessage {
+                            role: "user".to_string(),
+                            content: serde_json::Value::Array(vec![tool_result_block]),
+                        });
+                    } else {
+                        converted.push(AnthropicMessage {
+                            role: "user".to_string(),
+                            content: serde_json::Value::String(msg.content),
+                        });
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -202,12 +274,25 @@ impl LLMProvider for AnthropicProvider {
 
             // State for accumulating tool call parameters
             let mut current_tool_call: Option<(String, String, String)> = None; // (id, name, accumulated_json)
+            // Buffer for incomplete SSE lines split across HTTP chunks
+            let mut line_buf = String::new();
 
             while let Some(chunk_result) = stream.next().await {
                 if let Ok(chunk) = chunk_result {
                     let text = String::from_utf8_lossy(&chunk);
+                    line_buf.push_str(&text);
 
-                    for line in text.lines() {
+                    // Process all complete lines; keep the last partial line in the buffer
+                    let mut lines: Vec<String> = line_buf.split('\n').map(|s| s.to_string()).collect();
+                    let remainder = if line_buf.ends_with('\n') {
+                        String::new()
+                    } else {
+                        lines.pop().unwrap_or_default()
+                    };
+                    line_buf = remainder;
+
+                    for line in lines {
+                        let line = line.trim_end_matches('\r');
                         if let Some(data) = line.strip_prefix("data: ") {
                             if let Ok(event) = serde_json::from_str::<StreamEvent>(data) {
                                 match event.event_type.as_str() {

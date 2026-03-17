@@ -154,21 +154,29 @@ impl Session {
                         history.push(Message {
                             role: "user".to_string(),
                             content: content.clone(),
+                            tool_call_id: None,
+                            tool_calls: Vec::new(),
                         });
                     }
                 }
                 "assistant" => {
-                    if let Some(content) = &msg.content {
+                    // Always emit assistant turn, even if content is empty, when there are tool calls
+                    if msg.content.is_some() || !msg.tool_calls.is_empty() {
                         history.push(Message {
                             role: "assistant".to_string(),
-                            content: content.clone(),
+                            content: msg.content.clone().unwrap_or_default(),
+                            tool_call_id: None,
+                            tool_calls: msg.tool_calls.clone(),
                         });
                     }
 
+                    // Emit one user message per tool result with proper tool_call_id
                     for result in &msg.tool_results {
                         history.push(Message {
                             role: "user".to_string(),
-                            content: format!("Tool result: {}", result.observation),
+                            content: result.observation.clone(),
+                            tool_call_id: Some(result.tool_call_id.clone()),
+                            tool_calls: Vec::new(),
                         });
                     }
                 }

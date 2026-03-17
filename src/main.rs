@@ -264,6 +264,8 @@ async fn main() -> Result<()> {
             let mut messages = vec![Message {
                 role: "system".to_string(),
                 content: system_prompt.clone(),
+                tool_call_id: None,
+                tool_calls: Vec::new(),
             }];
             messages.extend(session.get_conversation_history());
 
@@ -378,7 +380,9 @@ async fn main() -> Result<()> {
                             // Add tool result to messages for next iteration
                             messages.push(Message {
                                 role: "user".to_string(),
-                                content: format!("Tool '{}' result: {}", tool_call.name, observation),
+                                content: observation,
+                                tool_call_id: Some(tool_call.id.clone()),
+                                tool_calls: Vec::new(),
                             });
                         }
                         Err(e) => {
@@ -394,7 +398,9 @@ async fn main() -> Result<()> {
 
                             messages.push(Message {
                                 role: "user".to_string(),
-                                content: format!("Tool '{}' failed: {}", tool_call.name, error_msg),
+                                content: error_msg,
+                                tool_call_id: Some(tool_call.id.clone()),
+                                tool_calls: Vec::new(),
                             });
                         }
                     }
@@ -427,6 +433,8 @@ async fn main() -> Result<()> {
         let mut messages = vec![Message {
             role: "system".to_string(),
             content: system_prompt.clone(),
+            tool_call_id: None,
+            tool_calls: Vec::new(),
         }];
         messages.extend(session.get_conversation_history());
 
@@ -549,7 +557,9 @@ async fn main() -> Result<()> {
                         // Add tool result to messages for next iteration
                         messages.push(Message {
                             role: "user".to_string(),
-                            content: format!("Tool '{}' result: {}", tool_call.name, observation),
+                            content: observation,
+                            tool_call_id: Some(tool_call.id.clone()),
+                            tool_calls: Vec::new(),
                         });
                     }
                     Err(e) => {
@@ -565,7 +575,9 @@ async fn main() -> Result<()> {
 
                         messages.push(Message {
                             role: "user".to_string(),
-                            content: format!("Tool '{}' failed: {}", tool_call.name, error_msg),
+                            content: error_msg,
+                            tool_call_id: Some(tool_call.id.clone()),
+                            tool_calls: Vec::new(),
                         });
                     }
                 }

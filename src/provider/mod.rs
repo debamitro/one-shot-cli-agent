@@ -9,6 +9,12 @@ use serde::{Deserialize, Serialize};
 pub struct Message {
     pub role: String,
     pub content: String,
+    /// For tool result messages: the tool_use_id this result corresponds to
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    /// For assistant messages that made tool calls: the tool calls made
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ToolCall>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
