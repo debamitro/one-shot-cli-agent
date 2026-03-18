@@ -10,6 +10,20 @@ use dialoguer::{theme::ColorfulTheme, Input};
 use provider::{LLMProvider, Message};
 use session::Session;
 use tools::ToolRegistry;
+use std::fs::OpenOptions;
+use std::io::Write;
+
+/// Write a debug log entry to the specified file with timestamp
+fn write_debug_log(log_path: &str, entry: &str) {
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)
+    {
+        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+        let _ = writeln!(file, "[{}] {}", timestamp, entry);
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "codeagent")]
@@ -77,6 +91,12 @@ struct Args {
         default_value = "5"
     )]
     max_tool_iterations: usize,
+
+    #[arg(
+        long,
+        help = "Path to write debug log (raw model output and tool call details)"
+    )]
+    debug_log: Option<String>,
 }
 
 #[tokio::main]
@@ -290,6 +310,12 @@ async fn main() -> Result<()> {
                 let mut all_tool_calls = Vec::new();
 
                 while let Some(chunk) = rx.recv().await {
+                    // Debug log raw chunk
+                    if let Some(ref log_path) = args.debug_log {
+                        let chunk_json = serde_json::to_string(&chunk).unwrap_or_else(|_| format!("{:?}", chunk));
+                        write_debug_log(log_path, &format!("STREAM_CHUNK: {}", chunk_json));
+                    }
+
                     if let Some(content) = chunk.content {
                         print!("{}", content);
                         full_content.push_str(&content);
@@ -359,8 +385,20 @@ async fn main() -> Result<()> {
                         }
                     }
 
+                    // Debug log tool call
+                    if let Some(ref log_path) = args.debug_log {
+                        let args_json = serde_json::to_string(&tool_call.arguments).unwrap_or_else(|_| format!("{:?}", tool_call.arguments));
+                        write_debug_log(log_path, &format!("TOOL_CALL: {} ({}) args={}", tool_call.name, tool_call.id, args_json));
+                    }
+
                     match tool_registry.execute(&tool_call.name, tool_call.arguments.clone()) {
                         Ok(result) => {
+                            // Debug log tool result
+                            if let Some(ref log_path) = args.debug_log {
+                                let output_json = serde_json::to_string(&result.output).unwrap_or_else(|_| format!("{:?}", result.output));
+                                write_debug_log(log_path, &format!("TOOL_RESULT: {} status={} output={}", tool_call.name, result.status, output_json));
+                            }
+
                             println!("    {}", result.observation.green());
                             if let Some(display) = &result.display {
                                 if !display.is_empty() {
@@ -386,6 +424,11 @@ async fn main() -> Result<()> {
                             });
                         }
                         Err(e) => {
+                            // Debug log tool error
+                            if let Some(ref log_path) = args.debug_log {
+                                write_debug_log(log_path, &format!("TOOL_ERROR: {} error={}", tool_call.name, e));
+                            }
+
                             let error_msg = format!("Tool execution failed: {}", e);
                             println!("    {}", error_msg.red());
 
@@ -459,6 +502,12 @@ async fn main() -> Result<()> {
             let mut all_tool_calls = Vec::new();
 
             while let Some(chunk) = rx.recv().await {
+                // Debug log raw chunk
+                if let Some(ref log_path) = args.debug_log {
+                    let chunk_json = serde_json::to_string(&chunk).unwrap_or_else(|_| format!("{:?}", chunk));
+                    write_debug_log(log_path, &format!("STREAM_CHUNK: {}", chunk_json));
+                }
+
                 if let Some(content) = chunk.content {
                     print!("{}", content);
                     full_content.push_str(&content);
@@ -536,8 +585,20 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // Debug log tool call
+                if let Some(ref log_path) = args.debug_log {
+                    let args_json = serde_json::to_string(&modified_args).unwrap_or_else(|_| format!("{:?}", modified_args));
+                    write_debug_log(log_path, &format!("TOOL_CALL: {} ({}) args={}", tool_call.name, tool_call.id, args_json));
+                }
+
                 match tool_registry.execute(&tool_call.name, modified_args) {
                     Ok(result) => {
+                        // Debug log tool result
+                        if let Some(ref log_path) = args.debug_log {
+                            let output_json = serde_json::to_string(&result.output).unwrap_or_else(|_| format!("{:?}", result.output));
+                            write_debug_log(log_path, &format!("TOOL_RESULT: {} status={} output={}", tool_call.name, result.status, output_json));
+                        }
+
                         println!("    {}", result.observation.green());
                         if let Some(display) = &result.display {
                             if !display.is_empty() {
@@ -563,6 +624,11 @@ async fn main() -> Result<()> {
                         });
                     }
                     Err(e) => {
+                        // Debug log tool error
+                        if let Some(ref log_path) = args.debug_log {
+                            write_debug_log(log_path, &format!("TOOL_ERROR: {} error={}", tool_call.name, e));
+                        }
+
                         let error_msg = format!("Tool execution failed: {}", e);
                         println!("    {}", error_msg.red());
 
