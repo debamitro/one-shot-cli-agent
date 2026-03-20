@@ -288,6 +288,9 @@ async fn main() -> Result<()> {
                 tool_calls: Vec::new(),
             }];
             messages.extend(session.get_conversation_history());
+            if let Some(ref log_path) = args.debug_log {
+                write_debug_log(log_path, &format!("SENDING: {} messages", messages.len()));
+            }
 
             // Agent loop - continue until no tool calls or max iterations
             let mut iteration = 0;
@@ -385,6 +388,30 @@ async fn main() -> Result<()> {
                         }
                     }
 
+                    // Print command details for file_search tool
+                    if tool_call.name == "file_search" {
+                        if let Some(op) = tool_call.arguments.get("operation") {
+                            if let Some(op_str) = op.as_str() {
+                                println!("    Operation: {}", op_str.dimmed());
+                            }
+                        }
+                        if let Some(pattern) = tool_call.arguments.get("pattern") {
+                            if let Some(pattern_str) = pattern.as_str() {
+                                println!("    Pattern: {}", pattern_str.dimmed());
+                            }
+                        }
+                        if let Some(path) = tool_call.arguments.get("path") {
+                            if let Some(path_str) = path.as_str() {
+                                println!("    Path: {}", path_str.dimmed());
+                            }
+                        }
+                        if let Some(ft) = tool_call.arguments.get("file_type") {
+                            if let Some(ft_str) = ft.as_str() {
+                                println!("    File type: {}", ft_str.dimmed());
+                            }
+                        }
+                    }
+
                     // Debug log tool call
                     if let Some(ref log_path) = args.debug_log {
                         let args_json = serde_json::to_string(&tool_call.arguments).unwrap_or_else(|_| format!("{:?}", tool_call.arguments));
@@ -407,6 +434,7 @@ async fn main() -> Result<()> {
                             }
 
                             let observation = result.observation.clone();
+                            let output_json = serde_json::to_string_pretty(&result.output).unwrap_or_else(|_| format!("{:?}", result.output));
 
                             session.add_tool_result(
                                 tool_call.id.clone(),
@@ -416,9 +444,11 @@ async fn main() -> Result<()> {
                             );
 
                             // Add tool result to messages for next iteration
+                            // Combine observation with structured output for LLM context
+                            let combined_content = format!("{}\n\n```\n{}\n```", observation, output_json);
                             messages.push(Message {
                                 role: "user".to_string(),
-                                content: observation,
+                                content: combined_content,
                                 tool_call_id: Some(tool_call.id.clone()),
                                 tool_calls: Vec::new(),
                             });
@@ -480,6 +510,9 @@ async fn main() -> Result<()> {
             tool_calls: Vec::new(),
         }];
         messages.extend(session.get_conversation_history());
+        if let Some(ref log_path) = args.debug_log {
+            write_debug_log(log_path, &format!("SENDING: {} messages", messages.len()));
+        }
 
         // Agent loop - continue until no tool calls or max iterations
         let mut iteration = 0;

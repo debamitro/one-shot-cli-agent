@@ -171,10 +171,14 @@ impl Session {
                     }
 
                     // Emit one user message per tool result with proper tool_call_id
+                    // Combine observation with structured output for LLM context
                     for result in &msg.tool_results {
+                        let output_json = serde_json::to_string_pretty(&result.output)
+                            .unwrap_or_else(|_| format!("{:?}", result.output));
+                        let combined_content = format!("{}\n\n```\n{}\n```", result.observation, output_json);
                         history.push(Message {
                             role: "user".to_string(),
-                            content: result.observation.clone(),
+                            content: combined_content,
                             tool_call_id: Some(result.tool_call_id.clone()),
                             tool_calls: Vec::new(),
                         });
