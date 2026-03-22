@@ -1,0 +1,40 @@
+#!/bin/bash
+
+### Configuration start ###
+
+# Set your Anthropic API key here
+API_KEY=""
+
+# Set the full path to codeagent here
+CODEAGENT=""
+
+### Configuration end ###
+
+# Initialize variable to store the -p argument
+p_value=""
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -p)
+            # Check if there's a value after -p
+            if [[ -n "$2" ]] && [[ "$2" != -* ]]; then
+                p_value="$2"
+                shift 2  # Skip both -p and its value
+            else
+                echo "Error: -p requires an argument" >&2
+                exit 1
+            fi
+            ;;
+        *)
+            # Ignore all other arguments
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$p_value" ]]; then
+    $CODEAGENT --provider anthropic --api-key $API_KEY --model claude-sonnet-4-6
+else
+    $CODEAGENT --provider anthropic --api-key $API_KEY --model claude-sonnet-4-6 --input "'$p_value'"
+fi
