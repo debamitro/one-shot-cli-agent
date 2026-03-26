@@ -88,6 +88,8 @@ Options:
       --anthropic-base-url <URL>         Anthropic base URL (optional, overrides default)
       --system-prompt <TEXT>             System prompt override (direct text)
       --system-prompt-file <FILE>        System prompt override (read from file)
+      --persona <PERSONA>                Built-in persona (default, concise, teacher, reviewer, architect)
+      --list-personas                    List available personas and exit
   -h, --help                             Print help
 ```
 

@@ -15,6 +15,8 @@ pub struct SessionInfo {
     pub updated_at: DateTime<Utc>,
     pub message_count: usize,
     pub system_prompt: Option<String>,
+    #[serde(default)]
+    pub persona: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +49,7 @@ impl Session {
         directory: String,
         storage_path: PathBuf,
         system_prompt: Option<String>,
+        persona: Option<String>,
     ) -> Self {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
@@ -60,6 +63,7 @@ impl Session {
                 updated_at: now,
                 message_count: 0,
                 system_prompt,
+                persona,
             },
             messages: Vec::new(),
             storage_path,
@@ -197,6 +201,15 @@ impl Session {
 
     pub fn set_system_prompt(&mut self, prompt: Option<String>) {
         self.info.system_prompt = prompt;
+        self.info.updated_at = Utc::now();
+    }
+
+    pub fn get_persona(&self) -> Option<String> {
+        self.info.persona.clone()
+    }
+
+    pub fn set_persona(&mut self, persona: Option<String>) {
+        self.info.persona = persona;
         self.info.updated_at = Utc::now();
     }
 

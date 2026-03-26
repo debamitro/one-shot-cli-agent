@@ -1,3 +1,4 @@
+mod persona;
 mod provider;
 mod session;
 mod tools;
@@ -7,6 +8,7 @@ use clap::Parser;
 use colored::Colorize;
 use dialoguer::{theme::ColorfulTheme, Input};
 
+use persona::{all_personas, get_persona};
 use provider::{LLMProvider, Message};
 use session::Session;
 use tools::ToolRegistry;
@@ -60,6 +62,12 @@ struct Args {
     #[arg(long, help = "System prompt override (read from file)")]
     system_prompt_file: Option<String>,
 
+    #[arg(long, help = "Built-in persona to use (e.g. default, concise, teacher, reviewer, architect)")]
+    persona: Option<String>,
+
+    #[arg(long, help = "List available personas and exit")]
+    list_personas: bool,
+
     #[arg(
         short = 'i',
         long,
@@ -103,6 +111,14 @@ struct Args {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
+    if args.list_personas {
+        println!("Available personas:");
+        for persona in all_personas() {
+            println!("  - {:<10} {}", persona.name, persona.description);
+        }
+        return Ok(());
+    }
+
     // Detect mode: interactive (default) vs non-interactive (--input provided)
     let is_interactive = args.input.is_none();
 
@@ -144,13 +160,34 @@ async fn main() -> Result<()> {
         .join(".codeagent")
         .join("sessions");
 
-    // Resolve system prompt (priority: CLI arg > file > default)
+    // Resolve system prompt (priority: CLI arg > file > persona > default)
     const DEFAULT_SYSTEM_PROMPT: &str = "You are a helpful coding assistant. You have access to tools for file operations, code search, and command execution. Use them to help the user with their coding tasks.";
 
-    let resolved_prompt = if let Some(prompt) = args.system_prompt {
+    let explicit_prompt_requested = args.system_prompt.is_some() || args.system_prompt_file.is_some();
+
+    let selected_persona = if let Some(persona_name) = args.persona.as_deref() {
+        Some(get_persona(persona_name).ok_or_else(|| {
+            let available = all_personas()
+                .iter()
+                .map(|p| p.name)
+                .collect::<Vec<_>>()
+                .join(", ");
+            anyhow::anyhow!(
+                "Unknown persona '{}'. Available personas: {}",
+                persona_name,
+                available
+            )
+        })?)
+    } else {
+        None
+    };
+
+    let resolved_persona = selected_persona.map(|p| p.name.to_string());
+
+    let resolved_prompt = if let Some(prompt) = args.system_prompt.clone() {
         Some(prompt)
-    } else if let Some(file_path) = args.system_prompt_file {
-        let content = std::fs::read_to_string(&file_path).map_err(|e| {
+    } else if let Some(file_path) = args.system_prompt_file.as_deref() {
+        let content = std::fs::read_to_string(file_path).map_err(|e| {
             anyhow::anyhow!("Failed to read system prompt file '{}': {}", file_path, e)
         })?;
         Some(content)
@@ -163,9 +200,10 @@ async fn main() -> Result<()> {
         println!("{}", format!("Resuming session: {}", session_id).cyan());
         let mut session = Session::load(&session_id, storage_path)?;
 
-        // Override session prompt if CLI arg provided
-        if resolved_prompt.is_some() {
+        // Override session prompt/persona if CLI values provided
+        if explicit_prompt_requested || resolved_persona.is_some() {
             session.set_system_prompt(resolved_prompt.clone());
+            session.set_persona(resolved_persona.clone());
         }
 
         session
@@ -184,7 +222,13 @@ async fn main() -> Result<()> {
             })
         };
 
-        let session = Session::new(title, args.directory, storage_path, resolved_prompt.clone());
+        let session = Session::new(
+            title,
+            args.directory,
+            storage_path,
+            resolved_prompt.clone(),
+            resolved_persona.clone(),
+        );
         println!(
             "{}",
             format!("Created session: {}", session.info.id).green()
@@ -192,10 +236,20 @@ async fn main() -> Result<()> {
         session
     };
 
-    // Get final system prompt (session stored > default)
-    let system_prompt = session
+    // Build final system prompt: base prompt + persona prompt appended (if any)
+    let base_system_prompt = session
         .get_system_prompt()
         .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
+
+    let persona_prompt = session
+        .get_persona()
+        .and_then(|name| get_persona(&name).map(|p| p.system_prompt.to_string()));
+
+    let system_prompt = if let Some(persona_prompt) = persona_prompt {
+        format!("{}\n\n# Persona for the assistant:\n\n{}", base_system_prompt, persona_prompt)
+    } else {
+        base_system_prompt
+    };
 
     // Initialize tools
     let web_search_api_key = std::env::var("SERPER_API_KEY").ok();
