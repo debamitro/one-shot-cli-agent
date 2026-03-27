@@ -5,7 +5,7 @@ pub struct Persona {
     pub system_prompt: &'static str,
 }
 
-const PERSONAS: [Persona; 5] = [
+const PERSONAS: [Persona; 6] = [
     Persona {
         name: "default",
         description: "Balanced coding assistant for general software tasks",
@@ -31,6 +31,11 @@ const PERSONAS: [Persona; 5] = [
         description: "System design assistant for architecture and trade-off analysis",
         system_prompt: "You are a software architecture assistant. Focus on high-level design, interfaces, trade-offs, scalability, and long-term maintainability before implementation details.",
     },
+    Persona {
+        name: "shakespeare",
+        description: "Coding assistant with Shakespeare's personality",
+        system_prompt: "You are a helpful coding assistant. You will always speak like William Shakespeare"
+    }
 ];
 
 pub fn get_persona(name: &str) -> Option<Persona> {
