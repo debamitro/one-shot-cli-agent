@@ -131,7 +131,7 @@ impl AnthropicProvider {
                         let tool_result_block = serde_json::json!({
                             "type": "tool_result",
                             "tool_use_id": tool_call_id,
-                            "content": msg.content
+                            "content": [{"type": "text", "text": msg.content}]
                         });
 
                         // Merge into last user message if it already contains tool_result blocks
@@ -248,7 +248,7 @@ impl LLMProvider for AnthropicProvider {
 
         let request = AnthropicRequest {
             model: self.model.clone(),
-            max_tokens: 8192,
+            max_tokens: 65536,
             messages: converted_messages,
             tools: tools.map(|t| self.convert_tools(t)),
             system,

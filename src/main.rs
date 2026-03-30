@@ -349,8 +349,6 @@ async fn main() -> Result<()> {
             // Agent loop - continue until no tool calls or max iterations
             let mut iteration = 0;
             loop {
-                println!("{}", "\nAssistant: ".bold().blue());
-
                 // Conditionally pass tools based on iteration count
                 let tools = if iteration < args.max_tool_iterations {
                     Some(tool_definitions.clone())
@@ -365,6 +363,7 @@ async fn main() -> Result<()> {
 
                 let mut full_content = String::new();
                 let mut all_tool_calls = Vec::new();
+                let mut header_printed = false;
 
                 while let Some(chunk) = rx.recv().await {
                     // Debug log raw chunk
@@ -374,6 +373,11 @@ async fn main() -> Result<()> {
                     }
 
                     if let Some(content) = chunk.content {
+                        // Only print the "Assistant:" header once we know there's text to show
+                        if !header_printed {
+                            println!("{}", "\nAssistant: ".bold().blue());
+                            header_printed = true;
+                        }
                         print!("{}", content);
                         full_content.push_str(&content);
                     }
@@ -384,7 +388,9 @@ async fn main() -> Result<()> {
                         break;
                     }
                 }
-                println!(); // Newline after streaming
+                if !full_content.is_empty() {
+                    println!(); // Newline after streaming
+                }
 
                 // Add assistant message
                 let content = if full_content.is_empty() {
@@ -393,6 +399,14 @@ async fn main() -> Result<()> {
                     Some(full_content)
                 };
                 session.add_assistant_message(content.clone(), all_tool_calls.clone());
+
+                // Also push assistant message into messages so the LLM sees its own prior response
+                messages.push(Message {
+                    role: "assistant".to_string(),
+                    content: content.clone().unwrap_or_default(),
+                    tool_call_id: None,
+                    tool_calls: all_tool_calls.clone(),
+                });
 
                 // If no tool calls, we're done
                 if all_tool_calls.is_empty() {
@@ -694,6 +708,7 @@ async fn main() -> Result<()> {
                         }
 
                         let observation = result.observation.clone();
+                        let output_json = serde_json::to_string_pretty(&result.output).unwrap_or_else(|_| format!("{:?}", result.output));
 
                         session.add_tool_result(
                             tool_call.id.clone(),
@@ -703,9 +718,11 @@ async fn main() -> Result<()> {
                         );
 
                         // Add tool result to messages for next iteration
+                        // Combine observation with structured output for LLM context
+                        let combined_content = format!("{}\n\n```\n{}\n```", observation, output_json);
                         messages.push(Message {
                             role: "user".to_string(),
-                            content: observation,
+                            content: combined_content,
                             tool_call_id: Some(tool_call.id.clone()),
                             tool_calls: Vec::new(),
                         });
