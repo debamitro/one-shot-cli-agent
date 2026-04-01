@@ -44,6 +44,10 @@ impl Tool for EditFileTool {
                 "end_line": {
                     "type": "integer",
                     "description": "Ending line number (1-based, for replace_by_lines)"
+                },
+                "max_length": {
+                    "type": "integer",
+                    "description": "Maximum lines to display (default: 5, use 0 for unlimited)"
                 }
             },
             "required": ["operation", "file_path"]
@@ -103,7 +107,11 @@ impl Tool for EditFileTool {
                     .get("end_line")
                     .and_then(|v| v.as_u64())
                     .map(|n| n as usize);
-                self.read_file(file_path, start_line, end_line)
+                let max_length = input
+                    .get("max_length")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize);
+                self.read_file(file_path, start_line, end_line, max_length)
             }
             _ => Err(anyhow::anyhow!("Unknown operation: {}", operation)),
         }
@@ -228,6 +236,7 @@ impl EditFileTool {
         file_path: &str,
         start_line: Option<usize>,
         end_line: Option<usize>,
+        max_length: Option<usize>,
     ) -> Result<ToolOutput> {
         let content =
             fs::read_to_string(file_path).context(format!("Failed to read file: {}", file_path))?;
@@ -238,11 +247,30 @@ impl EditFileTool {
         let start = start_line.unwrap_or(1).saturating_sub(1);
         let end = end_line.unwrap_or(total_lines).min(total_lines);
 
-        let selected_lines: Vec<String> = lines[start..end]
+        // Apply max_length limit (default to 5 if not specified, 0 means unlimited)
+        let display_end = if let Some(max_len) = max_length {
+            if max_len == 0 {
+                end // No limit
+            } else {
+                (start + max_len).min(end)
+            }
+        } else {
+            // Default to showing max 5 lines
+            (start + 5).min(end)
+        };
+
+        let selected_lines: Vec<String> = lines[start..display_end]
             .iter()
             .enumerate()
             .map(|(i, line)| format!("{}|{}", start + i + 1, line))
             .collect();
+
+        let truncated_display = display_end < end;
+        let line_count_msg = if truncated_display {
+            format!("showing {} of {} lines", display_end - start, end - start)
+        } else {
+            format!("{} lines", display_end - start)
+        };
 
         Ok(ToolOutput {
             output: json!({
@@ -250,14 +278,16 @@ impl EditFileTool {
                 "total_lines": total_lines,
                 "start_line": start + 1,
                 "end_line": end,
+                "displayed_lines": display_end - start,
                 "content": selected_lines.join("\n")
             }),
             observation: format!(
-                "Read lines {}-{} from {} ({} total lines)",
+                "Read lines {}-{} from {} ({} total lines, {})",
                 start + 1,
                 end,
                 file_path,
-                total_lines
+                total_lines,
+                line_count_msg
             ),
             display: Some(selected_lines.join("\n")),
             status: "success".to_string(),
