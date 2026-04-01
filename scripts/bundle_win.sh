@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 
-ver=0.6
+ver=0.7
 
 cargo build --target x86_64-pc-windows-gnu --release
 cd target/x86_64-pc-windows-gnu/release
