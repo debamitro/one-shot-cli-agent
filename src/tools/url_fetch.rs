@@ -52,11 +52,13 @@ impl URLFetchTool {
             text
         };
 
-        let truncated = if processed.len() > max_length {
+        let truncated = if processed.chars().count() > max_length {
+            // Use character-based slicing to avoid cutting in the middle of a UTF-8 character
+            let truncated_str: String = processed.chars().take(max_length).collect();
             format!(
                 "{}...\n\n[Content truncated: {} chars total, showing first {} chars]",
-                &processed[..max_length],
-                processed.len(),
+                truncated_str,
+                processed.chars().count(),
                 max_length
             )
         } else {
