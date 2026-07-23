@@ -179,7 +179,8 @@ impl Session {
                     for result in &msg.tool_results {
                         let output_json = serde_json::to_string_pretty(&result.output)
                             .unwrap_or_else(|_| format!("{:?}", result.output));
-                        let combined_content = format!("{}\n\n```\n{}\n```", result.observation, output_json);
+                        let combined_content =
+                            format!("{}\n\n```\n{}\n```", result.observation, output_json);
                         history.push(Message {
                             role: "user".to_string(),
                             content: combined_content,

@@ -138,7 +138,10 @@ impl AnthropicProvider {
                         if let Some(last) = converted.last_mut() {
                             if last.role == "user" {
                                 if let Some(arr) = last.content.as_array_mut() {
-                                    if arr.iter().any(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_result")) {
+                                    if arr.iter().any(|b| {
+                                        b.get("type").and_then(|t| t.as_str())
+                                            == Some("tool_result")
+                                    }) {
                                         arr.push(tool_result_block);
                                         continue;
                                     }
@@ -274,7 +277,7 @@ impl LLMProvider for AnthropicProvider {
 
             // State for accumulating tool call parameters
             let mut current_tool_call: Option<(String, String, String)> = None; // (id, name, accumulated_json)
-            // Buffer for incomplete SSE lines split across HTTP chunks
+                                                                                // Buffer for incomplete SSE lines split across HTTP chunks
             let mut line_buf = String::new();
 
             while let Some(chunk_result) = stream.next().await {
@@ -283,7 +286,8 @@ impl LLMProvider for AnthropicProvider {
                     line_buf.push_str(&text);
 
                     // Process all complete lines; keep the last partial line in the buffer
-                    let mut lines: Vec<String> = line_buf.split('\n').map(|s| s.to_string()).collect();
+                    let mut lines: Vec<String> =
+                        line_buf.split('\n').map(|s| s.to_string()).collect();
                     let remainder = if line_buf.ends_with('\n') {
                         String::new()
                     } else {

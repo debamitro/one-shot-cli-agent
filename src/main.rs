@@ -11,17 +11,13 @@ use dialoguer::{theme::ColorfulTheme, Input};
 use persona::{all_personas, get_persona};
 use provider::{LLMProvider, Message};
 use session::Session;
-use tools::ToolRegistry;
 use std::fs::OpenOptions;
 use std::io::Write;
+use tools::ToolRegistry;
 
 /// Write a debug log entry to the specified file with timestamp
 fn write_debug_log(log_path: &str, entry: &str) {
-    if let Ok(mut file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(log_path)
-    {
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let _ = writeln!(file, "[{}] {}", timestamp, entry);
     }
@@ -62,7 +58,10 @@ struct Args {
     #[arg(long, help = "System prompt override (read from file)")]
     system_prompt_file: Option<String>,
 
-    #[arg(long, help = "Built-in persona to use (e.g. default, concise, teacher, reviewer, architect)")]
+    #[arg(
+        long,
+        help = "Built-in persona to use (e.g. default, concise, teacher, reviewer, architect)"
+    )]
     persona: Option<String>,
 
     #[arg(long, help = "List available personas and exit")]
@@ -92,13 +91,6 @@ struct Args {
         help = "Auto-approve all bash commands (non-interactive mode only, use with caution)"
     )]
     auto_approve: bool,
-
-    #[arg(
-        long,
-        help = "Maximum tool call iterations before forcing final answer (default: 5)",
-        default_value = "5"
-    )]
-    max_tool_iterations: usize,
 
     #[arg(
         long,
@@ -163,7 +155,8 @@ async fn main() -> Result<()> {
     // Resolve system prompt (priority: CLI arg > file > persona > default)
     const DEFAULT_SYSTEM_PROMPT: &str = "You are a helpful coding assistant. You have access to tools for file operations, code search, and command execution. Use them to help the user with their coding tasks.";
 
-    let explicit_prompt_requested = args.system_prompt.is_some() || args.system_prompt_file.is_some();
+    let explicit_prompt_requested =
+        args.system_prompt.is_some() || args.system_prompt_file.is_some();
 
     let selected_persona = if let Some(persona_name) = args.persona.as_deref() {
         Some(get_persona(persona_name).ok_or_else(|| {
@@ -246,7 +239,10 @@ async fn main() -> Result<()> {
         .and_then(|name| get_persona(&name).map(|p| p.system_prompt.to_string()));
 
     let system_prompt = if let Some(persona_prompt) = persona_prompt {
-        format!("{}\n\n# Persona for the assistant:\n\n{}", base_system_prompt, persona_prompt)
+        format!(
+            "{}\n\n# Persona for the assistant:\n\n{}",
+            base_system_prompt, persona_prompt
+        )
     } else {
         base_system_prompt
     };
@@ -346,19 +342,11 @@ async fn main() -> Result<()> {
                 write_debug_log(log_path, &format!("SENDING: {} messages", messages.len()));
             }
 
-            // Agent loop - continue until no tool calls or max iterations
-            let mut iteration = 0;
+            // Agent loop
             loop {
-                // Conditionally pass tools based on iteration count
-                let tools = if iteration < args.max_tool_iterations {
-                    Some(tool_definitions.clone())
-                } else {
-                    None
-                };
-
                 // Stream completion
                 let mut rx = provider
-                    .stream_completion(messages.clone(), tools)
+                    .stream_completion(messages.clone(), Some(tool_definitions.clone()))
                     .await?;
 
                 let mut full_content = String::new();
@@ -368,7 +356,8 @@ async fn main() -> Result<()> {
                 while let Some(chunk) = rx.recv().await {
                     // Debug log raw chunk
                     if let Some(ref log_path) = args.debug_log {
-                        let chunk_json = serde_json::to_string(&chunk).unwrap_or_else(|_| format!("{:?}", chunk));
+                        let chunk_json = serde_json::to_string(&chunk)
+                            .unwrap_or_else(|_| format!("{:?}", chunk));
                         write_debug_log(log_path, &format!("STREAM_CHUNK: {}", chunk_json));
                     }
 
@@ -410,19 +399,6 @@ async fn main() -> Result<()> {
 
                 // If no tool calls, we're done
                 if all_tool_calls.is_empty() {
-                    break;
-                }
-
-                // Check if max iterations reached
-                if iteration >= args.max_tool_iterations {
-                    println!(
-                        "\n{}",
-                        format!(
-                            "⚠ Maximum tool iterations ({}) reached. Forcing final answer.",
-                            args.max_tool_iterations
-                        )
-                        .yellow()
-                    );
                     break;
                 }
 
@@ -482,16 +458,30 @@ async fn main() -> Result<()> {
 
                     // Debug log tool call
                     if let Some(ref log_path) = args.debug_log {
-                        let args_json = serde_json::to_string(&tool_call.arguments).unwrap_or_else(|_| format!("{:?}", tool_call.arguments));
-                        write_debug_log(log_path, &format!("TOOL_CALL: {} ({}) args={}", tool_call.name, tool_call.id, args_json));
+                        let args_json = serde_json::to_string(&tool_call.arguments)
+                            .unwrap_or_else(|_| format!("{:?}", tool_call.arguments));
+                        write_debug_log(
+                            log_path,
+                            &format!(
+                                "TOOL_CALL: {} ({}) args={}",
+                                tool_call.name, tool_call.id, args_json
+                            ),
+                        );
                     }
 
                     match tool_registry.execute(&tool_call.name, tool_call.arguments.clone()) {
                         Ok(result) => {
                             // Debug log tool result
                             if let Some(ref log_path) = args.debug_log {
-                                let output_json = serde_json::to_string(&result.output).unwrap_or_else(|_| format!("{:?}", result.output));
-                                write_debug_log(log_path, &format!("TOOL_RESULT: {} status={} output={}", tool_call.name, result.status, output_json));
+                                let output_json = serde_json::to_string(&result.output)
+                                    .unwrap_or_else(|_| format!("{:?}", result.output));
+                                write_debug_log(
+                                    log_path,
+                                    &format!(
+                                        "TOOL_RESULT: {} status={} output={}",
+                                        tool_call.name, result.status, output_json
+                                    ),
+                                );
                             }
 
                             println!("    {}", result.observation.green());
@@ -502,7 +492,8 @@ async fn main() -> Result<()> {
                             }
 
                             let observation = result.observation.clone();
-                            let output_json = serde_json::to_string_pretty(&result.output).unwrap_or_else(|_| format!("{:?}", result.output));
+                            let output_json = serde_json::to_string_pretty(&result.output)
+                                .unwrap_or_else(|_| format!("{:?}", result.output));
 
                             session.add_tool_result(
                                 tool_call.id.clone(),
@@ -511,9 +502,10 @@ async fn main() -> Result<()> {
                                 result.status,
                             );
 
-                            // Add tool result to messages for next iteration
+                            // Add tool result to messages
                             // Combine observation with structured output for LLM context
-                            let combined_content = format!("{}\n\n```\n{}\n```", observation, output_json);
+                            let combined_content =
+                                format!("{}\n\n```\n{}\n```", observation, output_json);
                             messages.push(Message {
                                 role: "user".to_string(),
                                 content: combined_content,
@@ -524,7 +516,10 @@ async fn main() -> Result<()> {
                         Err(e) => {
                             // Debug log tool error
                             if let Some(ref log_path) = args.debug_log {
-                                write_debug_log(log_path, &format!("TOOL_ERROR: {} error={}", tool_call.name, e));
+                                write_debug_log(
+                                    log_path,
+                                    &format!("TOOL_ERROR: {} error={}", tool_call.name, e),
+                                );
                             }
 
                             let error_msg = format!("Tool execution failed: {}", e);
@@ -551,9 +546,6 @@ async fn main() -> Result<()> {
                 if finish_called {
                     break;
                 }
-
-                // Increment iteration counter
-                iteration += 1;
             }
 
             // Save after each interaction
@@ -564,7 +556,9 @@ async fn main() -> Result<()> {
         let user_input = args.input.unwrap(); // Safe: checked is_interactive
 
         if user_input.is_empty() {
-            return Err(anyhow::anyhow!("Input cannot be empty for non-interactive mode"));
+            return Err(anyhow::anyhow!(
+                "Input cannot be empty for non-interactive mode"
+            ));
         }
 
         // Add user message
@@ -582,21 +576,13 @@ async fn main() -> Result<()> {
             write_debug_log(log_path, &format!("SENDING: {} messages", messages.len()));
         }
 
-        // Agent loop - continue until no tool calls or max iterations
-        let mut iteration = 0;
+        // Agent loop
         loop {
             println!("{}", "\nAssistant: ".bold().blue());
 
-            // Conditionally pass tools based on iteration count
-            let tools = if iteration < args.max_tool_iterations {
-                Some(tool_definitions.clone())
-            } else {
-                None
-            };
-
             // Stream completion
             let mut rx = provider
-                .stream_completion(messages.clone(), tools)
+                .stream_completion(messages.clone(), Some(tool_definitions.clone()))
                 .await?;
 
             let mut full_content = String::new();
@@ -605,7 +591,8 @@ async fn main() -> Result<()> {
             while let Some(chunk) = rx.recv().await {
                 // Debug log raw chunk
                 if let Some(ref log_path) = args.debug_log {
-                    let chunk_json = serde_json::to_string(&chunk).unwrap_or_else(|_| format!("{:?}", chunk));
+                    let chunk_json =
+                        serde_json::to_string(&chunk).unwrap_or_else(|_| format!("{:?}", chunk));
                     write_debug_log(log_path, &format!("STREAM_CHUNK: {}", chunk_json));
                 }
 
@@ -632,19 +619,6 @@ async fn main() -> Result<()> {
 
             // If no tool calls, we're done
             if all_tool_calls.is_empty() {
-                break;
-            }
-
-            // Check if max iterations reached
-            if iteration >= args.max_tool_iterations {
-                println!(
-                    "\n{}",
-                    format!(
-                        "⚠ Maximum tool iterations ({}) reached. Forcing final answer.",
-                        args.max_tool_iterations
-                    )
-                    .yellow()
-                );
                 break;
             }
 
@@ -688,16 +662,30 @@ async fn main() -> Result<()> {
 
                 // Debug log tool call
                 if let Some(ref log_path) = args.debug_log {
-                    let args_json = serde_json::to_string(&modified_args).unwrap_or_else(|_| format!("{:?}", modified_args));
-                    write_debug_log(log_path, &format!("TOOL_CALL: {} ({}) args={}", tool_call.name, tool_call.id, args_json));
+                    let args_json = serde_json::to_string(&modified_args)
+                        .unwrap_or_else(|_| format!("{:?}", modified_args));
+                    write_debug_log(
+                        log_path,
+                        &format!(
+                            "TOOL_CALL: {} ({}) args={}",
+                            tool_call.name, tool_call.id, args_json
+                        ),
+                    );
                 }
 
                 match tool_registry.execute(&tool_call.name, modified_args) {
                     Ok(result) => {
                         // Debug log tool result
                         if let Some(ref log_path) = args.debug_log {
-                            let output_json = serde_json::to_string(&result.output).unwrap_or_else(|_| format!("{:?}", result.output));
-                            write_debug_log(log_path, &format!("TOOL_RESULT: {} status={} output={}", tool_call.name, result.status, output_json));
+                            let output_json = serde_json::to_string(&result.output)
+                                .unwrap_or_else(|_| format!("{:?}", result.output));
+                            write_debug_log(
+                                log_path,
+                                &format!(
+                                    "TOOL_RESULT: {} status={} output={}",
+                                    tool_call.name, result.status, output_json
+                                ),
+                            );
                         }
 
                         println!("    {}", result.observation.green());
@@ -708,7 +696,8 @@ async fn main() -> Result<()> {
                         }
 
                         let observation = result.observation.clone();
-                        let output_json = serde_json::to_string_pretty(&result.output).unwrap_or_else(|_| format!("{:?}", result.output));
+                        let output_json = serde_json::to_string_pretty(&result.output)
+                            .unwrap_or_else(|_| format!("{:?}", result.output));
 
                         session.add_tool_result(
                             tool_call.id.clone(),
@@ -717,9 +706,10 @@ async fn main() -> Result<()> {
                             result.status,
                         );
 
-                        // Add tool result to messages for next iteration
+                        // Add tool result to messages
                         // Combine observation with structured output for LLM context
-                        let combined_content = format!("{}\n\n```\n{}\n```", observation, output_json);
+                        let combined_content =
+                            format!("{}\n\n```\n{}\n```", observation, output_json);
                         messages.push(Message {
                             role: "user".to_string(),
                             content: combined_content,
@@ -730,7 +720,10 @@ async fn main() -> Result<()> {
                     Err(e) => {
                         // Debug log tool error
                         if let Some(ref log_path) = args.debug_log {
-                            write_debug_log(log_path, &format!("TOOL_ERROR: {} error={}", tool_call.name, e));
+                            write_debug_log(
+                                log_path,
+                                &format!("TOOL_ERROR: {} error={}", tool_call.name, e),
+                            );
                         }
 
                         let error_msg = format!("Tool execution failed: {}", e);
@@ -757,9 +750,6 @@ async fn main() -> Result<()> {
             if finish_called {
                 break;
             }
-
-            // Increment iteration counter
-            iteration += 1;
         }
 
         // Save session if --save flag set
